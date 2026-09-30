@@ -1,0 +1,557 @@
+{
+  "version": "1.0.0",
+  "created_at": "2026-09-30",
+  "status": "planning_only",
+  "repository_proposal": {
+    "name": "gi-racesim",
+    "visibility": "private",
+    "strategy": "monorepo"
+  },
+  "works": [
+    {
+      "id": "WORK-000",
+      "title": "既存成果物・Mac環境の監査",
+      "lane": "共通",
+      "deps": [],
+      "owner": "Codex",
+      "goal": "新規作成する箇所と、再利用できる箇所を実ファイルで確定する。",
+      "outputs": [
+        "docs/audit/initial-inventory.md",
+        "docs/audit/test-results.md"
+      ],
+      "paths": [
+        "docs/audit/"
+      ],
+      "tasks": [
+        "gi_scrape_sim_v3.zip等の実在パスとハッシュを確認し、原本を変更しない。",
+        "macOS、CPU、メモリ、Git、Python、Node、Codex/Claude Code/Devinの利用方法を実機で確認する。秘密情報は出力しない。",
+        "既存テストを一時DB・モック通信で再実行し、過去の「通過件数」を未検証で転記しない。",
+        "現仕様と旧案の違い、未実装のHTTPアダプター・Site・モデルの状態を棚卸しする。"
+      ],
+      "checks": [
+        "入力ZIPの実在・版・ハッシュが報告されている。",
+        "実行したコマンド・成功/失敗/未実施が分かれている。",
+        "実取得、Sites公開、LaunchAgent登録、GitHub書込を行っていない。"
+      ],
+      "exclusions": [
+        "実サイト通信",
+        "本番台帳変更",
+        "リポジトリ新規作成・push",
+        "学習モデルの精度の主張"
+      ]
+    },
+    {
+      "id": "WORK-001",
+      "title": "非公開モノレポの土台と検査",
+      "lane": "共通",
+      "deps": [
+        "WORK-000"
+      ],
+      "owner": "Codex",
+      "goal": "サイト、Python処理、共有仕様を一つのコードベースで管理できる状態にする。",
+      "outputs": [
+        "README.md",
+        "AGENTS.md",
+        "CLAUDE.md",
+        "docs/adr/0001-private-monorepo.md",
+        ".github/workflows/checks.yml",
+        ".gitignore"
+      ],
+      "paths": [
+        "README.md",
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".github/",
+        ".gitignore",
+        "docs/adr/",
+        "apps/site/",
+        "packages/engine/",
+        "contracts/",
+        "ops/macos/"
+      ],
+      "tasks": [
+        "名称案gi-racesim。GitHub作成時は本人の明示操作でPrivateにする。既存リポジトリがあれば勝手に置き換えない。",
+        "apps/site、packages/engine、contracts、ops/macosを作る。PythonとJavaScriptの依存を分ける。",
+        "v3から必要なコードを移し、監査結果に基づく回帰検査を残す。旧設計全体を実装済み扱いにしない。",
+        "PRでPython検査・Siteビルド・契約検査を行う枠を作る。未実装チェックを成功したと偽装しない。",
+        "CIには実取得・本番データ・公開認証を渡さない。初期は軽い検査を全PRで走らせる。",
+        "GitHubの利用プランを確認し、利用可能ならmainの必須チェック/保護を設定。利用不可でもPrivateは維持し手動レビュー運用にする。"
+      ],
+      "checks": [
+        "再cloneした作業環境から、現在実装されているオフラインテストが再現する。",
+        "実DB・原HTML・秘密・学習重みが追跡対象でない。",
+        ".githubに定期スクレイピング、収集用self-hosted runner、自動Sites公開がない。"
+      ],
+      "exclusions": [
+        "本番台帳のGit管理",
+        "Sites一般公開",
+        "巨大なモノレポ専用基盤の導入"
+      ]
+    },
+    {
+      "id": "WORK-002",
+      "title": "Sitesの公開経路・本人限定・保存機能を実証",
+      "lane": "Sites",
+      "deps": [
+        "WORK-001"
+      ],
+      "owner": "Sites操作担当＋Codex",
+      "goal": "大量に画面を作る前に、ローカルソースから本人限定Siteへ反映できる経路を確認する。",
+      "outputs": [
+        "docs/sites/compatibility-report.md",
+        "docs/sites/publish-runbook.md",
+        "apps/site/の最小アプリ"
+      ],
+      "paths": [
+        "apps/site/",
+        "docs/sites/",
+        "scripts/site/"
+      ],
+      "tasks": [
+        "架空データだけの最小Siteを公式スターター/互換構成で作る。先にフレームワークを決めつけない。",
+        "apps/siteをローカルソースとして作成・バージョン保存できるか実機確認する。サブディレクトリ非対応なら同じリポジトリから許可リスト方式でSite配布物を作る。第二の正本を作らない。",
+        "元GitコミットとSiteの保存版/公開版の対応を記録する。GitHub pushを自動公開とみなさない。",
+        "実デプロイは本人操作として、個人利用側・共有相手なしを確認する。管理者権限のあるワークスペースを本人だけと呼ばない。",
+        "未ログイン/権限のない別アカウントで画面・API・ファイル経路を検査する。拒否は401/403またはログイン誘導等、実挙動で判定する。",
+        "合成の小ファイルとメタデータをD1/R2へ保存し、再訪後の読出しとコード更新後の保持を確認する。"
+      ],
+      "checks": [
+        "公開操作経路・対応するソースSHA・Site版が記録される。",
+        "本人以外に試験データが返らない。未検証のアクセス経路は未完了とする。",
+        "少量の試験ファイルが再訪後に同じハッシュで読める。",
+        "公開のためのソース/ビルドに原HTML・本番DB・Python学習データが入らない。"
+      ],
+      "exclusions": [
+        "未確認のSites CLI/APIの捏造",
+        "GitHub Actionsからの自動公開",
+        "実収集データ投入",
+        "一般公開"
+      ]
+    },
+    {
+      "id": "WORK-003",
+      "title": "Mac→Sitesのデータ契約v1を固定",
+      "lane": "共通",
+      "deps": [
+        "WORK-001"
+      ],
+      "owner": "Codex（Sites担当レビュー）",
+      "goal": "収集・モデル・Siteを別々に進めても接続が壊れない共通形式を作る。",
+      "outputs": [
+        "contracts/viewer/v1/schema.json",
+        "contracts/viewer/v1/fixtures/",
+        "docs/contracts/viewer-v1.md"
+      ],
+      "paths": [
+        "contracts/",
+        "packages/engine/src/gi_racesim/exporter/",
+        "apps/site/の検証器",
+        "docs/contracts/"
+      ],
+      "tasks": [
+        "schema_version、run_id、race_id、as_of、generated_at、producer_code_commit、dataset_id、model_id、originを定義する。",
+        "originはsynthetic/baseline/model等の生成由来とprospective/retrospectiveの時点条件を区別する。実測は別セクションにする。",
+        "ラップの区間長/単位、馬番と馬ID、馬群・間隔・内外・欠測・代表試行の表現を定義する。",
+        "PythonとSite側の両方で同じ正常/異常fixtureを検証する。正確な馬群内前後順位を架空に埋めない。",
+        "v1はUTF-8 JSONの手動取込、上限5 MiBを試験用設定にする。全試行の集計と代表試行最大20件を基本とし、件数上限はWORK-002の測定に基づき調整する。",
+        "未知のschema_versionは拒否、同run_id+同hashは再取込不要、同run_id+別hashは衝突として拒否する。"
+      ],
+      "checks": [
+        "同じfixtureがPythonとSiteの双方で一致して許可/拒否される。",
+        "秒と馬身区分、unknownと0、生成値と実測を区別できる。",
+        "XSS的文字列はデータとして描画され実行されない。任意URL取得・スクリプト実行・pickle読込を行わない。",
+        "標本数全体と代表試行数が区別され、代表だけから全体の確率を計算しない。"
+      ],
+      "exclusions": [
+        "生HTMLのアップロード",
+        "重みファイルのアップロード",
+        "勝率/Tier中心への変更"
+      ]
+    },
+    {
+      "id": "WORK-004",
+      "title": "Mac収集器の通信接続と運用コマンドをモックで検査",
+      "lane": "Mac",
+      "deps": [
+        "WORK-001"
+      ],
+      "owner": "Codex（Claude Codeレビュー）",
+      "goal": "既存台帳を迂回する通信がないMac用収集器を作る。",
+      "outputs": [
+        "packages/engine/src/gi_racesim/collector/",
+        "ops/macos/LaunchAgentテンプレート",
+        "docs/runbooks/collector.md"
+      ],
+      "paths": [
+        "packages/engine/src/gi_racesim/collector/",
+        "packages/engine/tests/",
+        "ops/macos/",
+        "docs/runbooks/"
+      ],
+      "tasks": [
+        "status、tick、pause、resume、parse-cache等のCLI仕様を定義し、tickは最大1通信とする。",
+        "並列1・応答後120秒・5要求後3600秒・JST8〜22時・暦日と24時間各60要求を、同じsource_group台帳で強制する。",
+        "一覧、robots、失敗、retry、redirectも全て台帳を経由させる。ブラウザの隠れた並列要求を導入しない。",
+        "403/429/認証/challenge/構造変化で停止、失敗時の待機、時計逆行、activeが残ったクラッシュを検査する。",
+        "コードcheckoutと本番実行環境を分け、launchdは承認済み版だけを参照する。開発worktreeの編集で本番が変わらない。",
+        "本番DBと原HTMLはApplication Support配下。モックは一時DBを使い、本番のパスへ接続しない。"
+      ],
+      "checks": [
+        "再起動・二重起動・日付変更・スリープ相当の時刻ジャンプでも上限を突破しない。",
+        "日次予算リセットや待機を無視したresumeを実装していない。",
+        "HTTPアダプター内の自動リトライ/リダイレクトが台帳を迂回しない。",
+        "初期設定で外部収集を開始せず、LaunchAgentも自動登録しない。"
+      ],
+      "exclusions": [
+        "実サイトの取得",
+        "取得高速化",
+        "開発エージェントからの独立クローラ"
+      ]
+    },
+    {
+      "id": "WORK-005",
+      "title": "Sitesの取込・隊列・ラップ画面を架空データで完成",
+      "lane": "Sites",
+      "deps": [
+        "WORK-002",
+        "WORK-003"
+      ],
+      "owner": "Sites担当／Codex、独立部品はDevin候補",
+      "goal": "モデル完成を待たず、共通形式の結果を見られる研究画面を作る。",
+      "outputs": [
+        "apps/site/インポート・一覧・比較画面",
+        "docs/sites/import-test.md"
+      ],
+      "paths": [
+        "apps/site/",
+        "docs/sites/"
+      ],
+      "tasks": [
+        "契約v1のJSONをブラウザから取込。アップロード上限を読み込み前/途中でも検査する。",
+        "D1のメタデータとR2の結果を対応させ、検証完了したrunだけをreadyとして表示する。片方失敗は公開一覧に出さず回収可能にする。",
+        "ラップ図、地点別馬群、内外順、観測不足、データ/モデル版を表示する。コーナー間補間は補間と表示。",
+        "同一runの再取込・衝突・未知版・途中失敗・再訪・コード更新をテストする。",
+        "画面を開く/更新するだけで収集元へ通信しない。収集状況は取込時点でありリアルタイムと誤表示しない。"
+      ],
+      "checks": [
+        "合成runをMacから取り込み、別端末・再訪で内容とハッシュを確認できる。",
+        "通常画面でもsyntheticの表示が消えない。",
+        "不正JSONや未対応版が既存データを壊さない。",
+        "API/ファイルも含む認可テストが通る。"
+      ],
+      "exclusions": [
+        "モデル実行用のMac公開API",
+        "リアルタイム収集ボタン",
+        "本番データをGitへcommit"
+      ]
+    },
+    {
+      "id": "WORK-006",
+      "title": "少量実取得と実HTMLパーサーの確認",
+      "lane": "Mac",
+      "deps": [
+        "WORK-004"
+      ],
+      "owner": "Codex＋本人の開始操作",
+      "goal": "低頻度ルールのまま実ページを少数取得し、抽出定義を確認する。",
+      "outputs": [
+        "ローカルraw/normalized",
+        "docs/audit/source-adapter.md（実内容の転載は最小化）"
+      ],
+      "paths": [
+        "packages/engine/src/gi_racesim/collector/",
+        "packages/engine/src/gi_racesim/normalization/",
+        "packages/engine/tests/",
+        "docs/audit/"
+      ],
+      "tasks": [
+        "取得元の利用条件・通常公開範囲・robots・必要フィールドを確認し台帳へ記録する。許諾された頻度であると断定しない。",
+        "本人が開始した少量テストで合計30要求程度に達したら停止して検査する。一括・並列で取らない。",
+        "公開リンクからIDを発見し、結果・履歴の重複を排除する。年代/主催者/距離の差を調べる。",
+        "元HTMLをローカル保存し、パーサーは保存HTMLで修正する。200の拒否画面も検出する。",
+        "実ページのコーナー凡例を確認し、括弧・星印・間隔の解釈が年度・ページで妥当か照合する。",
+        "Gitに入るfixtureは合成中心。実ページを丸ごとPR/AIクラウドへ付けない。"
+      ],
+      "checks": [
+        "全通信が1台帳に記録され、設定通りの実間隔・休止になっている。",
+        "取得数/失敗/隔離/不足が報告され、認証回避や再取得ループがない。",
+        "少なくとも各採用HTML形式で抽出値を人が原表と照合した。"
+      ],
+      "exclusions": [
+        "全期間総取り",
+        "制限の回避",
+        "不足項目の推測補完"
+      ]
+    },
+    {
+      "id": "WORK-007",
+      "title": "学習用レースセットと固定manifestを作る",
+      "lane": "Mac",
+      "deps": [
+        "WORK-003",
+        "WORK-006"
+      ],
+      "owner": "Codex",
+      "goal": "取得数ではなく、発走前Xと展開Yを作れるレース数を把握する。",
+      "outputs": [
+        "packages/engine/src/gi_racesim/datasets/",
+        "ローカルdatasets/manifest",
+        "品質集計"
+      ],
+      "paths": [
+        "packages/engine/src/gi_racesim/datasets/",
+        "packages/engine/src/gi_racesim/normalization/",
+        "packages/engine/tests/",
+        "docs/data/"
+      ],
+      "tasks": [
+        "レース全頭を単位に、過去履歴とラップ/隊列教師を別領域にする。",
+        "最大12走/1096日など既存初期設定を版管理し、真の実績不足と取得不足を分ける。",
+        "コーナー部分観測、群の統合、括弧内の内外と前後を取り違えない検査を追加する。",
+        "未来情報、結果表の行順、現在の生涯集計がXへ入らないテストを行う。",
+        "source hash、parser version、features version、分割IDを固定する。全取得待ちにせず、検査済みセットから作る。"
+      ],
+      "checks": [
+        "少なくとも1レースのX/Yを原データと突き合わせて説明できる。",
+        "時点不明・欠測を0で埋めていない。",
+        "同じmanifestから同じ学習データを再生成できる。",
+        "実データ版はGitではなくローカル保存。コードには形式と合成例だけ。"
+      ],
+      "exclusions": [
+        "まだない実績の創作",
+        "勝率を主ラベルにすること",
+        "評価レースの未来結果を入力にすること"
+      ]
+    },
+    {
+      "id": "WORK-008",
+      "title": "基準予測・展開評価・結果exportを通す",
+      "lane": "Mac/研究",
+      "deps": [
+        "WORK-007"
+      ],
+      "owner": "Codex（Claude Codeレビュー）",
+      "goal": "高度なモデルより先に、何を改善したと判定するかを実装する。",
+      "outputs": [
+        "packages/engine/src/gi_racesim/evaluation/",
+        "packages/engine/src/gi_racesim/exporter/",
+        "ローカルbaseline run"
+      ],
+      "paths": [
+        "packages/engine/src/gi_racesim/models/",
+        "packages/engine/src/gi_racesim/evaluation/",
+        "packages/engine/src/gi_racesim/exporter/",
+        "packages/engine/tests/",
+        "docs/research/"
+      ],
+      "tasks": [
+        "条件別の基準ラップ/隊列予測を、学習期間データだけで作る。",
+        "主評価を区間ラップ分布と前/同群/後の関係にし、観測される間隔・内外・カバレッジも出す。",
+        "レース/時系列単位の分割と同じmanifestでの比較を実装する。大量試行のbest-ofだけを主評価にしない。",
+        "契約v1のviewer bundleを書き出す。baseline、retrospective等のラベルを落とさない。",
+        "実データが少ない場合は検証不足を出し、良いスコアが出るまで対象レースを選び直さない。"
+      ],
+      "checks": [
+        "同じ入力とseedから同じ基準結果・評価・exportが再現する。",
+        "正解のコーナーやラップを発走前生成へ混ぜない。",
+        "結果が悪くても未評価でも正しく表示する。",
+        "出力がWORK-003の検証器を通る。"
+      ],
+      "exclusions": [
+        "ニューラルネット優位の宣言",
+        "回収率/Tierの最適化"
+      ]
+    },
+    {
+      "id": "WORK-009",
+      "title": "実レース1件をMacからSitesへ一貫して表示",
+      "lane": "統合",
+      "deps": [
+        "WORK-005",
+        "WORK-008"
+      ],
+      "owner": "Codex＋Sites担当",
+      "goal": "取得→解析→基準展開→書出し→本人限定Siteの一周を完成させる。",
+      "outputs": [
+        "docs/integration/first-real-race.md",
+        "Site内の実レース研究run"
+      ],
+      "paths": [
+        "apps/site/",
+        "packages/engine/src/gi_racesim/exporter/",
+        "docs/integration/"
+      ],
+      "tasks": [
+        "利用条件を満たす範囲の実レース1件から表示用情報だけをexportする。",
+        "Siteへ手動取込し、ラップ・隊列・モデル版・欠測・実測比較を原データと照合する。",
+        "Mac停止中にも取込済みrunを閲覧できること、再訪時に保持されることを確認する。",
+        "同一run再取込、未知版、途中障害、権限なし閲覧で既存runが壊れないことを確認する。"
+      ],
+      "checks": [
+        "同じrun_idとhashをMac/Sitesで確認できる。",
+        "架空・基準・学習モデルを区別したまま表示される。",
+        "未ログイン/他アカウントにrun情報やファイルが返らない。",
+        "これは接続の合格であり予測精度の合格ではない、と報告される。"
+      ],
+      "exclusions": [
+        "初回からの自動同期",
+        "生データや全履歴のクラウド送信"
+      ]
+    },
+    {
+      "id": "WORK-010",
+      "title": "Macの長期低頻度運用・更新・復旧",
+      "lane": "Mac/運用",
+      "deps": [
+        "WORK-006"
+      ],
+      "owner": "Codex＋本人の有効化操作",
+      "goal": "取得を数か月継続しても、開発変更やスリープで台帳を壊さない。",
+      "outputs": [
+        "ops/macos/実行・停止・更新手順",
+        "ローカル承認済み実行版",
+        "復旧試験記録"
+      ],
+      "paths": [
+        "ops/macos/",
+        "packages/engine/src/gi_racesim/collector/",
+        "docs/runbooks/"
+      ],
+      "tasks": [
+        "launchdは開発ブランチではなく承認済みリリースの絶対パスを指す。本人が有効化する。",
+        "スリープ中は収集停止、復帰時は単一台帳を使い追いつき取得しない。",
+        "更新時は停止→active要求確認→DB整合バックアップ→新環境テスト→切替→状態確認の順にする。",
+        "SQLiteのバックアップは整合する手段で取り、WAL運用ならDBファイルだけを雑にコピーしない。",
+        "コードを古い版へ戻しても取得枠や時刻履歴を古い状態へ戻さない。台帳を復元した場合は送信履歴を再照合するまで停止し、必要なら24時間以上の保守的待機を入れる。",
+        "実データは暗号化バックアップ等の別手段を用意し、Gitを台帳のバックアップにしない。"
+      ],
+      "checks": [
+        "再起動/更新後も待機状態と要求予算が維持される。",
+        "開発worktreeの変更が稼働中の収集器へ反映されない。",
+        "本番とテストDBが別である。",
+        "復旧後に二重送信や枠の巻戻しが起きない手順が再現される。"
+      ],
+      "exclusions": [
+        "GitHub Actionsによる本収集",
+        "複数Mac並列",
+        "無断常時稼働・スリープ禁止"
+      ]
+    },
+    {
+      "id": "WORK-011",
+      "title": "共同生成モデルと基準モデルの比較",
+      "lane": "Mac/研究",
+      "deps": [
+        "WORK-008"
+      ],
+      "owner": "Codex（Claude Codeレビュー）",
+      "goal": "GRU/Attention等の候補がラップ・隊列の分布予測を改善するか測る。",
+      "outputs": [
+        "packages/engine/src/gi_racesim/models/",
+        "packages/engine/src/gi_racesim/simulation/",
+        "ローカル学習runと評価報告"
+      ],
+      "paths": [
+        "packages/engine/src/gi_racesim/models/",
+        "packages/engine/src/gi_racesim/simulation/",
+        "packages/engine/tests/",
+        "docs/research/"
+      ],
+      "tasks": [
+        "履歴時系列→全馬相互関係→ラップ→条件付きコーナー生成を小型から試す。",
+        "ラップ欠測時に平均を教師として入れず、隊列だけの補助学習などを分離する。",
+        "同じ試行で全馬が同じラップ/隊列系列を共有し、馬の重複選択を禁止する。",
+        "同じmanifestで単体モデルと相互作用モデルを比較し、配列順の入替で意味が変わらないことを検査する。",
+        "発走前の自律生成を本成績とし、実測途中状態を与えた診断と分ける。",
+        "データ充足・Mac計算量を測定してから規模を増やす。500〜1000件等を精度保証にしない。"
+      ],
+      "checks": [
+        "基準より良い/悪い/未確定のすべてを同じ形式で報告できる。",
+        "国内GIの路面/距離/年代/主催者別に件数と未検証範囲が見える。",
+        "悪化したモデルを自動採用しない。",
+        "観測点間の補間を連続実測精度と称さない。"
+      ],
+      "exclusions": [
+        "勝者予測への目的変更",
+        "架空値を実学習成果として表示",
+        "根拠なしの好成績主張"
+      ]
+    },
+    {
+      "id": "WORK-012",
+      "title": "発走前記録とモデル比較の運用",
+      "lane": "統合/研究",
+      "deps": [
+        "WORK-009",
+        "WORK-010"
+      ],
+      "owner": "本人＋Codex",
+      "goal": "結果を知らない予測を保存し、展開精度の改善履歴を残す。",
+      "outputs": [
+        "docs/runbooks/prospective.md",
+        "固定runとSite比較記録"
+      ],
+      "paths": [
+        "packages/engine/src/gi_racesim/",
+        "apps/site/",
+        "docs/runbooks/",
+        "docs/research/"
+      ],
+      "tasks": [
+        "最初は基準モデルでもよい。学習済み候補はWORK-011の結果を見て別の版として追加する。",
+        "発走前のas_of・取得時刻・モデル/data版を凍結してrunを保存する。T-10取得に間に合わなければ古い入力/欠測と表示する。",
+        "結果公開後は評価だけを追加し、元の予測を上書きしない。",
+        "Sitesへのコード公開と結果取込を分け、両方の版を表示する。",
+        "自動同期はここで必須にせず、認証・権限・失敗時の扱いを実証してから別WORKにする。"
+      ],
+      "checks": [
+        "結果取得前に存在した予測と事後評価が区別される。",
+        "低頻度取得を急ぎレースのために突破しない。",
+        "Macオフライン/未同期/不足がUIで正直に表示される。",
+        "比較期間を繰り返しチューニングへ流用しない。"
+      ],
+      "exclusions": [
+        "自動馬券",
+        "常時再学習による同一予測上書き",
+        "Gitを結果データ配信に使うこと"
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "id": "S01",
+      "title": "OpenAI Sites（現在の案内）",
+      "url": "https://learn.chatgpt.com/docs/sites"
+    },
+    {
+      "id": "S02",
+      "title": "Creating and using ChatGPT Sites",
+      "url": "https://help.openai.com/en/articles/20001339-creating-and-using-chatgpt-sites"
+    },
+    {
+      "id": "S03",
+      "title": "Git worktree",
+      "url": "https://git-scm.com/docs/git-worktree"
+    },
+    {
+      "id": "S04",
+      "title": "GitHub protected branches",
+      "url": "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches"
+    },
+    {
+      "id": "S05",
+      "title": "GitHub workflow syntax",
+      "url": "https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax"
+    },
+    {
+      "id": "S06",
+      "title": "OpenAI AGENTS.md",
+      "url": "https://learn.chatgpt.com/docs/agent-configuration/agents-md"
+    },
+    {
+      "id": "S07",
+      "title": "Claude Code memory / AGENTS.md",
+      "url": "https://code.claude.com/docs/en/memory"
+    }
+  ]
+}

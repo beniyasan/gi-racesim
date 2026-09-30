@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="GIRaceSimのラップと地点別隊列を確認する研究用ビューア">
+  <title>GIRaceSim — 展開研究ビューア</title>
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="stylesheet" href="./src/styles.css">
+</head>
+<body>
+  <main>
+    <header><p class="eyebrow">GIRaceSim / research viewer</p><h1>レース展開の記録</h1><p>ラップと地点別隊列を、データの由来と観測不足を分けて確認します。</p></header>
+    <nav class="toolbar" aria-label="データ操作"><button id="load-fixture" type="button">合成fixtureを表示</button><label>JSONを選択<input id="bundle-file" type="file" accept="application/json,.json"></label></nav>
+    <div id="app" aria-live="polite"></div>
+  </main>
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>

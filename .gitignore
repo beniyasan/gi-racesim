@@ -1,0 +1,41 @@
+# Python and editor state
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+.DS_Store
+.idea/
+.vscode/
+
+# Local runtime and real data. Synthetic fixtures under contracts/ remain tracked.
+.local/
+/data/
+/raw/
+/normalized/
+/datasets/
+/models/
+/runs/
+/exports/
+/logs/
+*.sqlite
+*.sqlite3
+*.db
+*.parquet
+*.har
+*.pem
+*.key
+
+# Site build output
+apps/site/dist/
+node_modules/
+
+# Local audit output
+source-artifacts/
+
+.env
+.env.*
+!.env.example
+*.egg-info/
+build/
