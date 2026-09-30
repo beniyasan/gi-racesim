@@ -1,0 +1,33 @@
+name: offline checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run offline Python tests
+        run: PYTHONPATH=packages/engine/src python -m unittest discover -s packages/engine/tests -v
+      - name: Check copied contract assets
+        run: |
+          python scripts/sync_contract_assets.py
+          git diff --exit-code -- packages/engine/src/gi_racesim/common/viewer-schema.json apps/site/public/schema.json apps/site/public/fixtures/synthetic-race.json
+      - name: Run viewer tests
+        working-directory: apps/site
+        run: npm test
+      - name: Run repository guard tests
+        run: python -m unittest discover -s scripts/tests -v
+      - name: Check tracked files for runtime data
+        run: python scripts/check_tracked_files.py

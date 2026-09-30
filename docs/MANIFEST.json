@@ -1,0 +1,27 @@
+{
+  "files": {
+    "ARCHITECTURE.md": "0b8f9a0a629edee7db9c1204dea8cf4148919a8c3ac07ee350ce4cb32baeaccb",
+    "FIRST_WORK.md": "37a5f602106f9159a5c6a9465e743a9fb9e7f6fbc9d41eed0bafe7a486680ddd",
+    "README.md": "5a521212c3845fd7f486fee0fcf28a1b2687a0388cd56ef178191ce41f7c861e",
+    "WORKS.md": "6069731f4ad4ae46572beb14656e68379f0deeb2db2cb21a325d2f2306f42b6b",
+    "plan.json": "4af9d5b7faaa87e6022b69d934f93389d7e02baef8e91f7f096dd4587795f167",
+    "templates/AGENTS.md": "bc746b8a87c2f54d0773384a88073268df0b9e61e2f958e6e9303233f8110af1",
+    "templates/CLAUDE.md": "d851014c2356029190adb417cdf850fd546d14ad62fde8784f9e0c7749ca3250",
+    "templates/WORK_TEMPLATE.md": "36aee313fe62fe48a988e92df5ff6a58c5b553de79cc745657f758525c540ce8",
+    "templates/issue-template.yml": "72a021ebc22625c267b5d909311925fbc09b83a0626cc45ad3c8191fae8b291f",
+    "works/WORK-000.md": "0bf608ed2e44f63c9ebfcb27366adf76b25f440b7546cd1762adf2831baf8335",
+    "works/WORK-001.md": "86c65fc72aeab544c398cb176501fa98a20b8fab2942e00ddc3ba7e23c95019e",
+    "works/WORK-002.md": "b7b0e5f9cad62dea59bf85af02f161514ecced84db0d26361e7e6c60c75a927f",
+    "works/WORK-003.md": "e88a90314488c4b01da46a0c8e937a7e8036e8177ec755b84a03907e9a63055a",
+    "works/WORK-004.md": "68a82a0dabc6037302d43bd5755670e9f09f10218150d78bbd6fb082f20a2723",
+    "works/WORK-005.md": "e0101c0ee5c44d4054627eb181a9410cf25e4e86de00878194f2576935cbc8a2",
+    "works/WORK-006.md": "f27e44b10a17f9f067b919ff2f6db749c7253ffe31408b6efe55000d02c51545",
+    "works/WORK-007.md": "99a5a75aec8902c471cae33d8605d8b0398f8ef6f7161a188167174d8b3d2109",
+    "works/WORK-008.md": "14eca98d4197df29e2c4c7bf150a0c982f2822ca5f9fb9637cf36a3236f33ea5",
+    "works/WORK-009.md": "a1e2cfca6fc3ddbe52ecbef168eaefa268564218f5eacc6383bff6904503a022",
+    "works/WORK-010.md": "f8ef84e936aab74b2158c2b28e75eaecd46c32d8182e57dc975f625b6a623e2c",
+    "works/WORK-011.md": "e58c707949fd12417d3992ab9f5eb3efaea22c2650b4ef59c56c686b35aedb69",
+    "works/WORK-012.md": "1a63a69bcc6f27cbee12c4d53427e6b0f5eff4d4ac0db5ce773e21b8441c4959"
+  },
+  "validation": "Planning IDs/dependencies, required fields, JSON and Issue YAML parsed. No application or live validation."
+}

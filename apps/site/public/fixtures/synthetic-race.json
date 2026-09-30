@@ -1,0 +1,212 @@
+{
+  "schema_version": "viewer/v1",
+  "bundle_type": "race_simulation_result",
+  "run_id": "run-synthetic-001",
+  "race_id": "synthetic-gi-001",
+  "as_of": "2026-09-30T12:00:00+09:00",
+  "generated_at": "2026-09-30T12:01:00+09:00",
+  "producer_code_commit": "0000000000000000000000000000000000000000",
+  "dataset_id": "fixture-dataset-v1",
+  "model_id": null,
+  "origin": "synthetic",
+  "mode": "retrospective",
+  "race": {
+    "name": "合成GⅠテストレース",
+    "course": "架空競馬場",
+    "surface": "turf",
+    "distance_m": 1600,
+    "start_at": "2026-09-30T15:40:00+09:00",
+    "runners": [
+      {
+        "horse_id": "synthetic-horse-1",
+        "gate_no": 1,
+        "name": "テスト馬1"
+      },
+      {
+        "horse_id": "synthetic-horse-2",
+        "gate_no": 2,
+        "name": "テスト馬2"
+      },
+      {
+        "horse_id": "synthetic-horse-3",
+        "gate_no": 3,
+        "name": "テスト馬3"
+      },
+      {
+        "horse_id": "synthetic-horse-4",
+        "gate_no": 4,
+        "name": "テスト馬4"
+      }
+    ]
+  },
+  "simulation": {
+    "total_trials": 1,
+    "completed_trials": 1,
+    "representative_trials": [
+      {
+        "trial_id": "synthetic-trial-001",
+        "laps": {
+          "segment_ends_m": [
+            200,
+            400,
+            600,
+            800,
+            1000,
+            1200,
+            1400,
+            1600
+          ],
+          "values_s": [
+            12.3,
+            11.8,
+            11.7,
+            11.9,
+            11.8,
+            11.6,
+            11.4,
+            12.0
+          ]
+        },
+        "corners": [
+          {
+            "checkpoint": "3C",
+            "groups": [
+              {
+                "members": [
+                  1
+                ],
+                "inner_to_outer": null,
+                "marked_leader": null,
+                "gap_from_previous": null
+              },
+              {
+                "members": [
+                  2,
+                  3
+                ],
+                "inner_to_outer": [
+                  2,
+                  3
+                ],
+                "marked_leader": null,
+                "gap_from_previous": "two_to_under_five"
+              },
+              {
+                "members": [
+                  4
+                ],
+                "inner_to_outer": null,
+                "marked_leader": null,
+                "gap_from_previous": "unknown"
+              }
+            ],
+            "unobserved_gate_numbers": [],
+            "unknown_reason": null
+          },
+          {
+            "checkpoint": "4C",
+            "groups": [
+              {
+                "members": [
+                  1,
+                  2,
+                  3
+                ],
+                "inner_to_outer": [
+                  1,
+                  2,
+                  3
+                ],
+                "marked_leader": 1,
+                "gap_from_previous": null
+              },
+              {
+                "members": [
+                  4
+                ],
+                "inner_to_outer": null,
+                "marked_leader": null,
+                "gap_from_previous": "two_to_under_five"
+              }
+            ],
+            "unobserved_gate_numbers": [],
+            "unknown_reason": null
+          }
+        ]
+      }
+    ],
+    "lap_quantiles": [
+      {
+        "segment_end_m": 200,
+        "p10_s": 12.3,
+        "p50_s": 12.3,
+        "p90_s": 12.3,
+        "sample_count": 1
+      },
+      {
+        "segment_end_m": 400,
+        "p10_s": 11.8,
+        "p50_s": 11.8,
+        "p90_s": 11.8,
+        "sample_count": 1
+      },
+      {
+        "segment_end_m": 600,
+        "p10_s": 11.7,
+        "p50_s": 11.7,
+        "p90_s": 11.7,
+        "sample_count": 1
+      },
+      {
+        "segment_end_m": 800,
+        "p10_s": 11.9,
+        "p50_s": 11.9,
+        "p90_s": 11.9,
+        "sample_count": 1
+      },
+      {
+        "segment_end_m": 1000,
+        "p10_s": 11.8,
+        "p50_s": 11.8,
+        "p90_s": 11.8,
+        "sample_count": 1
+      },
+      {
+        "segment_end_m": 1200,
+        "p10_s": 11.6,
+        "p50_s": 11.6,
+        "p90_s": 11.6,
+        "sample_count": 1
+      },
+      {
+        "segment_end_m": 1400,
+        "p10_s": 11.4,
+        "p50_s": 11.4,
+        "p90_s": 11.4,
+        "sample_count": 1
+      },
+      {
+        "segment_end_m": 1600,
+        "p10_s": 12.0,
+        "p50_s": 12.0,
+        "p90_s": 12.0,
+        "sample_count": 1
+      }
+    ]
+  },
+  "observations": {
+    "laps": null,
+    "corners": []
+  },
+  "quality": {
+    "missing_fields": [
+      "observations.laps",
+      "observations.corners"
+    ],
+    "notes": [
+      "表示接続用の合成データ。実測・学習結果・予測精度を表していません。",
+      "producer_code_commit の全ゼロは合成fixture専用の予約値です。",
+      "群内の順序は内から外。先頭印のない馬どうしの前後は不明です。"
+    ]
+  }
+}

@@ -1,0 +1,32 @@
+name: WORK
+description: 成果物と完了条件を指定した作業
+title: "[WORK-XXX] 作業名"
+body:
+  - type: input
+    id: work_doc
+    attributes:
+      label: 作業票
+      description: docs/works/WORK-XXX.mdへの参照
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: 前提・依存Issue
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 完了条件と検査証拠
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: 変更範囲・今回しないこと
+  - type: checkboxes
+    id: external_actions
+    attributes:
+      label: 外部操作の扱い
+      options:
+        - label: 実取得・Sites公開・常駐有効化の有無と必要な本人操作を明記した
+          required: true

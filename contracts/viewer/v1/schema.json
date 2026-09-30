@@ -1,0 +1,465 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gi-racesim.invalid/contracts/viewer/v1/schema.json",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "viewer/v1"
+    },
+    "bundle_type": {
+      "const": "race_simulation_result"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "\\S"
+    },
+    "race_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "\\S"
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "producer_code_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "dataset_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "\\S"
+    },
+    "model_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 1000,
+      "pattern": "\\S"
+    },
+    "origin": {
+      "enum": [
+        "synthetic",
+        "baseline_prediction",
+        "learned_prediction"
+      ]
+    },
+    "mode": {
+      "enum": [
+        "prospective",
+        "retrospective"
+      ]
+    },
+    "race": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000,
+          "pattern": "\\S"
+        },
+        "course": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000,
+          "pattern": "\\S"
+        },
+        "surface": {
+          "enum": [
+            "turf",
+            "dirt"
+          ]
+        },
+        "distance_m": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "start_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "runners": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "horse_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "pattern": "\\S"
+              },
+              "gate_no": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 99
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000,
+                "pattern": "\\S"
+              }
+            },
+            "required": [
+              "horse_id",
+              "gate_no",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "maxItems": 99
+        }
+      },
+      "required": [
+        "name",
+        "course",
+        "surface",
+        "distance_m",
+        "start_at",
+        "runners"
+      ],
+      "additionalProperties": false
+    },
+    "simulation": {
+      "type": "object",
+      "properties": {
+        "total_trials": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "completed_trials": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "representative_trials": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/trial"
+          },
+          "minItems": 0,
+          "maxItems": 20
+        },
+        "lap_quantiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/lap_quantile"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "total_trials",
+        "completed_trials",
+        "representative_trials",
+        "lap_quantiles"
+      ],
+      "additionalProperties": false
+    },
+    "observations": {
+      "type": "object",
+      "properties": {
+        "laps": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/lap"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "corners": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/corner"
+          },
+          "minItems": 0,
+          "maxItems": 10
+        }
+      },
+      "required": [
+        "laps",
+        "corners"
+      ],
+      "additionalProperties": false
+    },
+    "quality": {
+      "type": "object",
+      "properties": {
+        "missing_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "pattern": "\\S"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "pattern": "\\S"
+          },
+          "minItems": 1,
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "missing_fields",
+        "notes"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "bundle_type",
+    "run_id",
+    "race_id",
+    "as_of",
+    "generated_at",
+    "producer_code_commit",
+    "dataset_id",
+    "model_id",
+    "origin",
+    "mode",
+    "race",
+    "simulation",
+    "observations",
+    "quality"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "lap": {
+      "type": "object",
+      "properties": {
+        "segment_ends_m": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "minItems": 1,
+          "maxItems": 100
+        },
+        "values_s": {
+          "type": "array",
+          "items": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "maximum": 1000
+          },
+          "minItems": 1,
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "segment_ends_m",
+        "values_s"
+      ],
+      "additionalProperties": false
+    },
+    "group": {
+      "type": "object",
+      "properties": {
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 99
+          },
+          "minItems": 1,
+          "maxItems": 99
+        },
+        "inner_to_outer": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 99
+          },
+          "minItems": 1,
+          "maxItems": 99
+        },
+        "marked_leader": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 99
+        },
+        "gap_from_previous": {
+          "enum": [
+            null,
+            "unknown",
+            "one_to_under_two",
+            "two_to_under_five",
+            "five_or_more"
+          ]
+        }
+      },
+      "required": [
+        "members",
+        "inner_to_outer",
+        "marked_leader",
+        "gap_from_previous"
+      ],
+      "additionalProperties": false
+    },
+    "corner": {
+      "type": "object",
+      "properties": {
+        "checkpoint": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "\\S"
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/group"
+          },
+          "minItems": 0,
+          "maxItems": 99
+        },
+        "unobserved_gate_numbers": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 99
+          },
+          "minItems": 0,
+          "maxItems": 99
+        },
+        "unknown_reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 1000,
+          "pattern": "\\S"
+        }
+      },
+      "required": [
+        "checkpoint",
+        "groups",
+        "unobserved_gate_numbers",
+        "unknown_reason"
+      ],
+      "additionalProperties": false
+    },
+    "lap_quantile": {
+      "type": "object",
+      "properties": {
+        "segment_end_m": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "p10_s": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0,
+          "maximum": 1000
+        },
+        "p50_s": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0,
+          "maximum": 1000
+        },
+        "p90_s": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0,
+          "maximum": 1000
+        },
+        "sample_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        }
+      },
+      "required": [
+        "segment_end_m",
+        "p10_s",
+        "p50_s",
+        "p90_s",
+        "sample_count"
+      ],
+      "additionalProperties": false
+    },
+    "trial": {
+      "type": "object",
+      "properties": {
+        "trial_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "\\S"
+        },
+        "laps": {
+          "$ref": "#/$defs/lap"
+        },
+        "corners": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/corner"
+          },
+          "minItems": 0,
+          "maxItems": 10
+        }
+      },
+      "required": [
+        "trial_id",
+        "laps",
+        "corners"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
