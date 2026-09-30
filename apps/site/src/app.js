@@ -6,7 +6,7 @@ const fixtureButton = document.querySelector("#load-fixture");
 let schemaPromise;
 
 function schema() {
-  schemaPromise ??= fetch("./schema.json", { cache: "no-store" }).then(async (response) => {
+  schemaPromise ??= fetch("./public/schema.json", { cache: "no-store" }).then(async (response) => {
     if (!response.ok) throw new Error(`schema HTTP ${response.status}`);
     return response.json();
   });
@@ -56,7 +56,7 @@ fileInput.addEventListener("change", async () => {
 
 fixtureButton.addEventListener("click", async () => {
   try {
-    const response = await fetch("./fixtures/synthetic-race.json", { cache: "no-store" });
+    const response = await fetch("./public/fixtures/synthetic-race.json", { cache: "no-store" });
     if (!response.ok) throw new Error(`fixture HTTP ${response.status}`);
     await loadJsonText(await response.text());
   } catch (error) {

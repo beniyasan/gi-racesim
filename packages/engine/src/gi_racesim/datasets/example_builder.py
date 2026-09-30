@@ -5,9 +5,11 @@ uses an allow-list; it does not prove that a historical page existed at as_of.
 """
 from __future__ import annotations
 from datetime import datetime
+from copy import deepcopy
 import hashlib
 import itertools
 import json
+import re
 from gi_racesim.normalization.asof import eligible_history
 from gi_racesim.normalization.corners import parse_corner, pair_observation
 
@@ -97,20 +99,34 @@ def build_example(*, race_id: str, target_start: str, as_of: str, mode: str,
 
 def freeze_manifest(*, sources: list[dict], splits: dict[str,list[str]],
                     parser_version: str, feature_version: str) -> dict:
-    """Versions must specify exact source content hashes, not mutable URLs only."""
+    """Snapshot declared source hashes; actual source bytes must be checked by the caller.
+
+    Accept SHA-256 as 64 ASCII hex characters and canonicalize to lowercase.
+    Copy source metadata so later caller mutations do not change the snapshot.
+    """
     if not parser_version or not feature_version:
         raise ValueError('versions required')
     all_ids=[r for races in splits.values() for r in races]
     if len(all_ids)!=len(set(all_ids)):
         raise ValueError('a race cannot occur in multiple splits')
     source_keys=[]
+    normalized_sources=[]
     for s in sources:
-        if not s.get('source_id') or len(s.get('sha256',''))!=64:
-            raise ValueError('exact source ID and SHA256 required')
-        source_keys.append(s['source_id'])
+        if not isinstance(s,dict):
+            raise ValueError('source must be a dictionary')
+        source_id=s.get('source_id')
+        source_hash=s.get('sha256')
+        if not isinstance(source_id,str) or not source_id.strip():
+            raise ValueError('non-empty string source ID required')
+        if not isinstance(source_hash,str) or re.fullmatch(r'[0-9a-fA-F]{64}',source_hash) is None:
+            raise ValueError('source SHA256 must be exactly 64 hexadecimal characters')
+        source_keys.append(source_id)
+        normalized_source=deepcopy(s)
+        normalized_source['sha256']=source_hash.lower()
+        normalized_sources.append(normalized_source)
     if len(source_keys)!=len(set(source_keys)):
         raise ValueError('duplicate source version ID')
-    body={'sources':sorted(sources,key=lambda s:s['source_id']),
+    body={'sources':sorted(normalized_sources,key=lambda s:s['source_id']),
           'splits':{k:sorted(v) for k,v in sorted(splits.items())},
           'parser_version':parser_version,'feature_version':feature_version}
     digest=hashlib.sha256(json.dumps(body,ensure_ascii=False,sort_keys=True,
