@@ -1,0 +1,215 @@
+"""Offline-first collector orchestration around the persistent request gate."""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable
+
+from .cache import CacheStore
+from .gate import Gate
+from .transport import (
+    DisabledTransport,
+    ExternalAccessDisabled,
+    HttpResponse,
+    HttpTransport,
+)
+
+
+UTC = timezone.utc
+
+
+class StructureChange(RuntimeError):
+    """Parser signal that the source markup no longer matches its contract."""
+
+
+def _ensure_time(value: datetime | None, now_fn: Callable[[], datetime]) -> datetime:
+    value = now_fn() if value is None else value
+    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError('timezone-aware datetime required')
+    return value
+
+
+def _blocked_response(response: HttpResponse) -> bool:
+    if response.status_code in {401, 403, 407, 429}:
+        return True
+    headers = response.headers
+    if any(key in headers for key in ('www-authenticate', 'proxy-authenticate',
+                                      'cf-mitigated', 'x-captcha', 'x-challenge')):
+        return True
+    sample = response.body[:256 * 1024].lower()
+    return any(marker in sample for marker in (b'captcha', b'access denied',
+                                               b'challenge-platform', b'cloudflare'))
+
+
+def classify_response(response: HttpResponse, requested_url: str) -> str:
+    """Classify one response without issuing a follow-up request."""
+    if response.url and response.url != requested_url:
+        return 'redirect'
+    if response.status_code == 304:
+        return 'not_modified'
+    if 300 <= response.status_code <= 399:
+        return 'redirect'
+    if _blocked_response(response):
+        return 'blocked'
+    if response.status_code in {404, 410}:
+        return 'not_found'
+    if 500 <= response.status_code <= 599 or response.status_code == 408:
+        return 'temporary'
+    if 200 <= response.status_code <= 299:
+        return 'ok'
+    if 400 <= response.status_code <= 499:
+        # Unknown client errors are an access/source review signal.  They are
+        # never silently treated as a successful page.
+        return 'blocked'
+    return 'temporary'
+
+
+class Collector:
+    """Coordinate one claim, at most one transport call, and one completion."""
+
+    def __init__(self, gate: Gate, *, transport: HttpTransport | None = None,
+                 cache: CacheStore | None = None,
+                 response_parser: Callable[[bytes], Any] | None = None,
+                 now_fn: Callable[[], datetime] | None = None):
+        self.gate = gate
+        self.transport = transport or DisabledTransport()
+        self.cache = cache or self._default_cache(gate)
+        self.response_parser = response_parser
+        self.now_fn = now_fn or (lambda: datetime.now(UTC))
+
+    @staticmethod
+    def _default_cache(gate: Gate) -> CacheStore:
+        # The CLI supplies an explicit Application Support path.  This fallback
+        # is only for library callers and remains adjacent to their chosen DB.
+        if gate.path == ':memory:':
+            return CacheStore(Path.cwd() / '.local' / 'collector-raw')
+        return CacheStore(Path(gate.path).expanduser().with_suffix('.raw'))
+
+    @staticmethod
+    def _completion(start: datetime, now_fn: Callable[[], datetime]) -> datetime:
+        candidate = _ensure_time(None, now_fn)
+        return candidate if candidate.timestamp() >= start.timestamp() else start
+
+    def tick(self, now: datetime | None = None) -> dict[str, Any]:
+        """Run one conservative collection tick.
+
+        The disabled check occurs before ``claim`` so the default command does
+        not consume a request budget merely because live HTTP was not enabled.
+        Once a permit is claimed, ``fetch`` appears exactly once in this method;
+        no exception or status branch retries it or follows a redirect.
+        """
+        explicit_now = now is not None
+        start = _ensure_time(now, self.now_fn)
+        if not getattr(self.transport, 'enabled', True):
+            return {'state': 'EXTERNAL_DISABLED', 'transport_calls': 0}
+        permit = self.gate.claim(start)
+        if permit.get('state') != 'PERMIT':
+            permit = dict(permit)
+            permit['transport_calls'] = 0
+            return permit
+        token = permit['token']
+        try:
+            # This is the only transport invocation in the whole tick.
+            response = self.transport.fetch(permit['url'])
+        except ExternalAccessDisabled as error:
+            # A transport may become disabled after claim (for example when an
+            # operator changes configuration between processes).  It is still
+            # a failed attempt and is handled without retrying.
+            completion = start if explicit_now else self._completion(start, self.now_fn)
+            self.gate.finish(token, completion, outcome='temporary')
+            return {'state': 'TEMPORARY', 'outcome': 'temporary',
+                    'token': token, 'error': str(error), 'transport_calls': 1}
+        except Exception as error:
+            completion = start if explicit_now else self._completion(start, self.now_fn)
+            self.gate.finish(token, completion, outcome='temporary')
+            return {'state': 'TEMPORARY', 'outcome': 'temporary',
+                    'token': token, 'error': str(error) or error.__class__.__name__,
+                    'transport_calls': 1}
+
+        if not isinstance(response, HttpResponse):
+            completion = start if explicit_now else self._completion(start, self.now_fn)
+            self.gate.finish(token, completion, outcome='temporary')
+            return {'state': 'TEMPORARY', 'outcome': 'temporary', 'token': token,
+                    'error': 'transport returned an invalid response', 'transport_calls': 1}
+
+        completion = start if explicit_now else self._completion(start, self.now_fn)
+        try:
+            entry = self.cache.save(token, response.body, {
+                'requested_url': permit['url'],
+                'response_url': response.url or permit['url'],
+                'fetched_at': completion.isoformat(),
+                'status_code': response.status_code,
+                'headers': dict(response.headers),
+                'snapshot_key': permit['snapshot_key'],
+                'kind': permit['kind'],
+            })
+            self.gate.record_response(
+                token, completion, raw_ref=entry.raw_ref, path=str(entry.path),
+                status_code=response.status_code, headers=dict(response.headers),
+                body_sha256=entry.body_sha256, body_bytes=entry.body_bytes,
+                response_url=response.url or permit['url'])
+        except Exception as error:
+            # The saved file (if any) is preserved.  Keeping the active token
+            # makes disk/metadata failures require explicit manual recovery,
+            # rather than marking an unverified response as complete.
+            return {'state': 'IN_FLIGHT_OR_UNCERTAIN', 'token': token,
+                    'error': str(error) or error.__class__.__name__,
+                    'transport_calls': 1}
+
+        outcome = classify_response(response, permit['url'])
+        if outcome == 'ok' and self.response_parser is not None:
+            try:
+                parser_result = self.response_parser(response.body)
+                if parser_result is False:
+                    raise StructureChange('response parser rejected source structure')
+            except Exception as error:
+                # A parser failure is a source/schema review signal.  The
+                # response is already saved, so finish it as quarantined and
+                # never fetch the same task automatically.
+                outcome = 'parse_error'
+                parser_error = str(error) or error.__class__.__name__
+            else:
+                parser_error = None
+        else:
+            parser_error = None
+        self.gate.finish(token, completion, outcome=outcome, raw_ref=entry.raw_ref)
+        result = {
+            'state': outcome.upper(),
+            'outcome': outcome,
+            'token': token,
+            'task_id': permit['task_id'],
+            'url': permit['url'],
+            'raw_ref': entry.raw_ref,
+            'status_code': response.status_code,
+            'transport_calls': 1,
+        }
+        if parser_error is not None:
+            result['error'] = parser_error
+        return result
+
+    def status(self) -> dict[str, Any]:
+        return self.gate.status()
+
+    def pause(self, now: datetime, note: str) -> None:
+        self.gate.pause(now, note)
+
+    def resume(self, now: datetime, note: str) -> None:
+        self.gate.resume(now, note)
+
+    def abandon(self, token: str, now: datetime, note: str) -> None:
+        self.gate.abandon(token, now, note)
+
+    def approve(self, now: datetime, note: str) -> None:
+        self.gate.approve(now, note)
+
+    def enqueue(self, url: str, *, snapshot_key: str = 'historical_v1',
+                kind: str = 'result', priority: int = 0,
+                discovered_from: str, ready_at: datetime | None = None) -> int:
+        return self.gate.enqueue(url, snapshot_key=snapshot_key, kind=kind,
+                                 priority=priority, discovered_from=discovered_from,
+                                 ready_at=ready_at)
+
+    def parse_cache(self, raw_ref: str | None = None) -> list[dict[str, Any]]:
+        """Parse saved HTML locally; no gate claim and no transport call."""
+        responses = self.gate.responses(raw_ref)
+        return [self.cache.parse(response) for response in responses]
