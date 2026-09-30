@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from gi_racesim.collector import (
     CacheStore,
@@ -12,6 +13,8 @@ from gi_racesim.collector import (
     MockTransport,
     Policy,
     TransportError,
+    UrllibTransport,
+    require_reviewed_source_structure,
 )
 
 
@@ -23,6 +26,9 @@ class CollectorTests(unittest.TestCase):
         self.cache_path = root / 'raw'
         self.gate = Gate(self.db_path)
         self.now = datetime(2026, 9, 30, 8, tzinfo=JST)
+        network = patch('socket.create_connection', side_effect=AssertionError('network forbidden'))
+        network.start()
+        self.addCleanup(network.stop)
 
     def tearDown(self):
         self.gate.close()
@@ -107,6 +113,33 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(transport.calls, 1)
         self.assertEqual(self.gate.status()['tasks']['REDIRECT_REVIEW'], 1)
 
+    def test_auth_signal_wins_over_redirect_classification(self):
+        self.setup_task(2)
+        transport = MockTransport(HttpResponse(
+            302, b'login',
+            {'Location': 'https://race.netkeiba.com/login',
+             'WWW-Authenticate': 'Basic'},
+            'https://race.netkeiba.com/mock/0'))
+        collector = self.collector(transport)
+        result = collector.tick(self.now)
+        self.assertEqual(result['state'], 'BLOCKED')
+        self.assertEqual(self.gate.status()['paused'], 'blocked')
+        self.assertEqual(transport.calls, 1)
+        self.assertEqual(collector.tick(self.now + timedelta(days=1))['state'], 'PAUSED')
+        self.assertEqual(transport.calls, 1)
+
+    def test_auth_and_challenge_signals_override_status_and_changed_url(self):
+        from gi_racesim.collector import classify_response
+        responses = (
+            HttpResponse(307, b'', {'X-Challenge': 'required'}),
+            HttpResponse(304, b'', {'WWW-Authenticate': 'Basic'}),
+            HttpResponse(403, b'', {}, 'https://race.netkeiba.com/login'),
+            HttpResponse(200, b'captcha', {}, 'https://race.netkeiba.com/login'),
+        )
+        for response in responses:
+            with self.subTest(response=response):
+                self.assertEqual(classify_response(response, 'https://race.netkeiba.com/mock'), 'blocked')
+
     def test_blocked_response_pauses_source_group(self):
         self.setup_task(2)
         transport = MockTransport(HttpResponse(403, b'access denied'))
@@ -161,6 +194,85 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(self.gate.status()['paused'], 'parse_schema_review')
         self.assertEqual(collector.tick(self.now + timedelta(days=1))['state'], 'PAUSED')
         self.assertEqual(transport.calls, 1)
+
+    def test_default_html_structure_validator_rejects_plain_success(self):
+        self.setup_task()
+        transport = MockTransport(HttpResponse(200, b'login page without markup'))
+        collector = Collector(self.gate, transport=transport,
+                              cache=CacheStore(self.cache_path),
+                              response_parser=require_reviewed_source_structure)
+        result = collector.tick(self.now)
+        self.assertEqual(result['state'], 'PARSE_ERROR')
+        self.assertEqual(self.gate.status()['paused'], 'parse_schema_review')
+
+    def test_unreviewed_validator_rejects_complete_html_with_arbitrary_table(self):
+        from gi_racesim.collector import StructureChange
+        with self.assertRaises(StructureChange):
+            require_reviewed_source_structure(b'<html><body><table><tr><td>Sign in</td></tr>'
+                                               b'</table></body></html>')
+
+    def test_external_transport_rejects_synthetic_timestamp(self):
+        self.setup_task()
+        collector = Collector(self.gate,
+                              transport=UrllibTransport(allow_external=True),
+                              cache=CacheStore(self.cache_path))
+        with patch.object(collector.transport, 'fetch') as fetch:
+            with self.assertRaisesRegex(ValueError, 'synthetic timestamp'):
+                collector.tick(self.now)
+            fetch.assert_not_called()
+        self.assertEqual(self.gate.status()['total_reserved_requests'], 0)
+
+    def test_external_transport_rejects_injected_clock(self):
+        self.setup_task()
+        for enabled in (False, True):
+            with self.subTest(enabled=enabled), self.assertRaisesRegex(ValueError, 'synthetic clock'):
+                Collector(self.gate, transport=UrllibTransport(allow_external=enabled),
+                          cache=CacheStore(self.cache_path), now_fn=lambda: self.now)
+        self.assertEqual(self.gate.status()['total_reserved_requests'], 0)
+
+    def test_unclassified_transport_cannot_use_synthetic_time(self):
+        class ExternalAdapter:
+            enabled = True
+
+            def fetch(self, _url):
+                raise AssertionError('must fail before transport is called')
+
+        self.setup_task()
+        collector = self.collector(ExternalAdapter())
+        with self.assertRaisesRegex(ValueError, 'synthetic timestamp'):
+            collector.tick(self.now)
+        self.assertEqual(self.gate.status()['total_reserved_requests'], 0)
+
+    def test_external_completion_wait_starts_after_response(self):
+        self.setup_task(2)
+        clock = [self.now, self.now + timedelta(seconds=30),
+                 self.now + timedelta(seconds=149), self.now + timedelta(seconds=150),
+                 self.now + timedelta(seconds=155)]
+        transport = UrllibTransport(allow_external=True)
+        with patch('gi_racesim.collector.service._wall_clock', side_effect=clock):
+            collector = Collector(self.gate, transport=transport, cache=CacheStore(self.cache_path),
+                                  response_parser=lambda body: True)
+            with patch.object(transport, 'fetch', return_value=HttpResponse(200, b'synthetic')) as fetch:
+                self.assertEqual(collector.tick()['state'], 'OK')
+                self.assertEqual(self.gate.status()['next_at'], clock[3].timestamp())
+                self.assertEqual(collector.tick()['state'], 'WAIT')
+                self.assertEqual(fetch.call_count, 1)
+                self.assertEqual(collector.tick()['state'], 'OK')
+                self.assertEqual(fetch.call_count, 2)
+
+    def test_clock_regression_during_live_response_preserves_active_token(self):
+        self.setup_task(2)
+        transport = UrllibTransport(allow_external=True)
+        clock = [self.now, self.now - timedelta(seconds=1)]
+        with patch('gi_racesim.collector.service._wall_clock', side_effect=clock):
+            collector = self.collector(transport)
+            with patch.object(transport, 'fetch', return_value=HttpResponse(200, b'synthetic')) as fetch:
+                with self.assertRaisesRegex(ValueError, 'clock moved backwards'):
+                    collector.tick()
+                fetch.assert_called_once()
+        self.assertIsNotNone(self.gate.status()['active_token'])
+        self.assertEqual(self.gate.status()['total_reserved_requests'], 1)
+        self.assertEqual(self.gate.claim(self.now + timedelta(days=1))['state'], 'IN_FLIGHT_OR_UNCERTAIN')
 
     def test_crash_keeps_active_token_across_restart(self):
         self.setup_task()

@@ -50,6 +50,7 @@ class HttpTransport(Protocol):
     """Transport contract: one call, one response or one exception."""
 
     enabled: bool
+    live: bool
 
     def fetch(self, url: str) -> HttpResponse:
         ...
@@ -59,6 +60,7 @@ class DisabledTransport:
     """Fail closed without opening a socket."""
 
     enabled = False
+    live = False
 
     def fetch(self, url: str) -> HttpResponse:
         raise ExternalAccessDisabled(
@@ -77,6 +79,8 @@ class UrllibTransport:
     """Minimal opt-in HTTPS transport with redirects and retries disabled."""
 
     enabled = True
+    # Whether this adapter can contact a source, independent of its opt-in.
+    live = True
 
     def __init__(self, *, allow_external: bool = False, timeout: float = 30.0,
                  user_agent: str = 'GIRaceSimCollector/0.1'):
@@ -127,6 +131,7 @@ class MockTransport:
     """
 
     enabled = True
+    live = False
 
     def __init__(self, responses: Iterable[TransportItem] | TransportItem):
         if isinstance(responses, (HttpResponse, BaseException)) or callable(responses):

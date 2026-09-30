@@ -2,7 +2,13 @@
 
 from .cache import CacheEntry, CacheStore
 from .gate import Gate, JST, Policy
-from .service import Collector, StructureChange, classify_response
+from .service import (
+    Collector,
+    StructureChange,
+    classify_response,
+    require_reviewed_source_structure,
+    validate_synthetic_html_structure,
+)
 from .transport import (
     DisabledTransport,
     ExternalAccessDisabled,
@@ -16,5 +22,6 @@ from .transport import (
 __all__ = [
     'CacheEntry', 'CacheStore', 'Collector', 'DisabledTransport', 'ExternalAccessDisabled',
     'Gate', 'HttpResponse', 'HttpTransport', 'JST', 'MockTransport', 'Policy', 'TransportError',
-    'UrllibTransport', 'StructureChange', 'classify_response',
+    'UrllibTransport', 'StructureChange', 'classify_response', 'require_reviewed_source_structure',
+    'validate_synthetic_html_structure',
 ]

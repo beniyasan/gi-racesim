@@ -15,7 +15,14 @@ RUN_DIR="$(mktemp -d)"
 DB="$RUN_DIR/collector.sqlite3"
 RAW="$RUN_DIR/raw"
 NOW=2026-09-30T08:00:00+09:00
-printf '<html><title>synthetic</title><body>fixture</body></html>\n' > "$RUN_DIR/page.html"
+cat > "$RUN_DIR/page.html" <<'HTML'
+<html><body>
+<table data-giracesim="synthetic-result-v1">
+  <tr><th data-field="horse">Horse</th><th data-field="finish">Finish</th></tr>
+  <tr><td data-field="horse">Synthetic A</td><td data-field="finish">1</td></tr>
+</table>
+</body></html>
+HTML
 
 python3 -m gi_racesim.collector --db "$DB" --cache-dir "$RAW" \
   --now "$NOW" approve --note 'synthetic source review'
@@ -32,6 +39,14 @@ python3 -m gi_racesim.collector --db "$DB" --cache-dir "$RAW" status
 HTMLと台帳メタデータだけを読み、HTTPを呼びません。保存されたHTMLとJSON sidecar
 は`$RAW`に作られ、SQLiteの`response`行から要求URL、応答URL、時刻、status、
 headers、SHA-256、ファイルパスを辿れます。
+
+CLIのmock tickは`synthetic-result-v1`の結果表と`horse`・`finish`の見出し／データセルを
+検査します。表や列が消えた場合は、HTMLを保存してタスクを`QUARANTINED`、source groupを
+`parse_schema_review`にします。単に`html`・`body`・`table`があるだけでは成功しません。
+
+実ページの検証器はWORK-006で原表との照合後に接続します。それまでは外部tickの未知の
+2xx応答も保存・隔離して停止します。合成fixture用の検証器を実ページには使いません。
+`parse-cache`は汎用のtitle/text抽出であり、`PARSED`は実レースデータの採用を意味しません。
 
 ## 状態確認と停止・再開
 
@@ -69,8 +84,14 @@ python3 -m gi_racesim.collector --db "$DB" --cache-dir "$RAW" \
 opt-inです。`UrllibTransport`は自動retryとredirect追従を持たず、403/429、認証要求、
 challenge、アクセス制限をsource-wide pauseへ送ります。構造変更は
 `Collector(response_parser=...)`のparserが例外を返した場合に同じ
-`parse_schema_review` pauseになります。WORK-004の検査ではこのflagを使わず、
-実サイトへの取得を行いません。
+`parse_schema_review` pauseになります。外部tickに`--now`を指定することは禁止し、
+要求開始と応答終了で実際の壁時計を読みます。ライブラリの外部transportも`tick(now=...)`と
+`now_fn`注入を拒否します。応答中の時刻逆行はactive tokenを残して保守確認へ止めます。
+`--allow-external`と`--mock-html`も同時指定できません。テストでは外部経路を検査する場合も
+HTTPをモックに差し替え、実サイトへ通信しません。
+
+認証／challengeはstatusや応答URLの分類に先立って判定します。例えば302と
+`WWW-Authenticate`の組み合わせもsource-wide pauseになり、後続タスクを実行しません。
 
 ## LaunchAgentテンプレート
 

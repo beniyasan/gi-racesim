@@ -9,7 +9,7 @@ import sys
 
 from .cache import CacheStore
 from .gate import Gate, JST, Policy
-from .service import Collector
+from .service import Collector, require_reviewed_source_structure, validate_synthetic_html_structure
 from .transport import DisabledTransport, HttpResponse, MockTransport, UrllibTransport
 
 
@@ -72,9 +72,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     tick = sub.add_parser('tick', help='claim and process at most one response')
     _common_options(tick)
-    tick.add_argument('--allow-external', action='store_true',
+    mode = tick.add_mutually_exclusive_group()
+    mode.add_argument('--allow-external', action='store_true',
                       help='explicitly opt into the no-retry/no-redirect urllib transport')
-    tick.add_argument('--mock-html', '--mock-response', dest='mock_html', type=Path,
+    mode.add_argument('--mock-html', '--mock-response', dest='mock_html', type=Path,
                       help='read one local HTML body and use a mock response')
     tick.add_argument('--mock-status', type=int, default=200)
     tick.add_argument('--mock-url', help='response URL for mock redirect checks')
@@ -125,6 +126,8 @@ def _json_default(value):
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == 'tick' and args.allow_external and args.now is not None:
+        parser.error('--now cannot be used with --allow-external; live ticks use wall clock time')
     db_path: Path = args.db.expanduser()
     cache_dir: Path = args.cache_dir.expanduser()
     gate = None
@@ -132,7 +135,12 @@ def main(argv: list[str] | None = None) -> int:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         cache_dir.mkdir(parents=True, exist_ok=True)
         gate = Gate(db_path, Policy(group=args.source_group))
-        collector = Collector(gate, transport=_transport(args), cache=CacheStore(cache_dir))
+        # A synthetic structure contract must never validate live source HTML.
+        response_parser = (validate_synthetic_html_structure
+                           if args.command == 'tick' and args.mock_html is not None
+                           else require_reviewed_source_structure)
+        collector = Collector(gate, transport=_transport(args), cache=CacheStore(cache_dir),
+                              response_parser=response_parser)
         if args.command == 'status':
             result = collector.status()
         elif args.command == 'approve':

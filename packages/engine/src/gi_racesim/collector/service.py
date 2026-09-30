@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Callable
 
@@ -16,6 +17,10 @@ from .transport import (
 
 
 UTC = timezone.utc
+
+
+def _wall_clock() -> datetime:
+    return datetime.now(UTC)
 
 
 class StructureChange(RuntimeError):
@@ -41,16 +46,59 @@ def _blocked_response(response: HttpResponse) -> bool:
                                                b'challenge-platform', b'cloudflare'))
 
 
+def require_reviewed_source_structure(body: bytes) -> None:
+    """Quarantine live HTML until WORK-006 establishes a reviewed source parser.
+
+    html/body/table tags alone cannot distinguish result pages from a login or
+    error page. Do not invent a source schema from the synthetic fixtures.
+    The response is saved before this validator is called.
+    """
+    raise StructureChange('no reviewed source structure validator; review saved HTML in WORK-006')
+
+
+class _SyntheticResultParser(HTMLParser):
+    """A tiny declared fixture schema, never a real source-page heuristic."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.tables = []
+        self.valid = False
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == 'table':
+            self.tables.append({'th': set(), 'td': set()} if
+                               attrs.get('data-giracesim') == 'synthetic-result-v1' else None)
+        elif tag in {'th', 'td'} and self.tables and self.tables[-1] is not None:
+            self.tables[-1][tag].add(attrs.get('data-field'))
+
+    def handle_endtag(self, tag):
+        if tag == 'table' and self.tables:
+            table = self.tables.pop()
+            if table is not None:
+                required = {'horse', 'finish'}
+                self.valid |= required <= table['th'] and required <= table['td']
+
+
+def validate_synthetic_html_structure(body: bytes) -> None:
+    """Validate only the explicitly labelled offline result-table fixture."""
+    parser = _SyntheticResultParser()
+    parser.feed(body.decode('utf-8'))
+    parser.close()
+    if not parser.valid:
+        raise StructureChange('expected synthetic result table/columns are missing')
+
+
 def classify_response(response: HttpResponse, requested_url: str) -> str:
     """Classify one response without issuing a follow-up request."""
+    if _blocked_response(response):
+        return 'blocked'
     if response.url and response.url != requested_url:
         return 'redirect'
     if response.status_code == 304:
         return 'not_modified'
     if 300 <= response.status_code <= 399:
         return 'redirect'
-    if _blocked_response(response):
-        return 'blocked'
     if response.status_code in {404, 410}:
         return 'not_found'
     if 500 <= response.status_code <= 599 or response.status_code == 408:
@@ -73,9 +121,13 @@ class Collector:
                  now_fn: Callable[[], datetime] | None = None):
         self.gate = gate
         self.transport = transport or DisabledTransport()
+        if now_fn is not None and getattr(self.transport, 'live', True):
+            raise ValueError('synthetic clock is not allowed with external transport')
         self.cache = cache or self._default_cache(gate)
         self.response_parser = response_parser
-        self.now_fn = now_fn or (lambda: datetime.now(UTC))
+        if self.response_parser is None and getattr(self.transport, 'live', True):
+            self.response_parser = require_reviewed_source_structure
+        self.now_fn = now_fn or _wall_clock
 
     @staticmethod
     def _default_cache(gate: Gate) -> CacheStore:
@@ -88,7 +140,9 @@ class Collector:
     @staticmethod
     def _completion(start: datetime, now_fn: Callable[[], datetime]) -> datetime:
         candidate = _ensure_time(None, now_fn)
-        return candidate if candidate.timestamp() >= start.timestamp() else start
+        if candidate.timestamp() < start.timestamp():
+            raise ValueError('clock moved backwards during request; active token requires review')
+        return candidate
 
     def tick(self, now: datetime | None = None) -> dict[str, Any]:
         """Run one conservative collection tick.
@@ -99,6 +153,8 @@ class Collector:
         no exception or status branch retries it or follows a redirect.
         """
         explicit_now = now is not None
+        if explicit_now and getattr(self.transport, 'live', True):
+            raise ValueError('synthetic timestamp is not allowed with external transport')
         start = _ensure_time(now, self.now_fn)
         if not getattr(self.transport, 'enabled', True):
             return {'state': 'EXTERNAL_DISABLED', 'transport_calls': 0}
