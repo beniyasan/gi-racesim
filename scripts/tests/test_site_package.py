@@ -74,6 +74,35 @@ class SitePackageTests(unittest.TestCase):
             with self.assertRaises(site_package.PackageError):
                 site_package.package_site(source, Path(temporary) / "out")
 
+    def test_default_commit_rejects_ignored_untracked_source(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary) / "repo"
+            repository.mkdir()
+            (repository / ".gitignore").write_text("custom-site/\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+            subprocess.run(["git", "add", ".gitignore"], cwd=repository, check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=GIRaceSim test",
+                    "-c",
+                    "user.email=test@example.invalid",
+                    "commit",
+                    "-qm",
+                    "fixture",
+                ],
+                cwd=repository,
+                check=True,
+            )
+            source = repository / "custom-site"
+            for relative in site_package.ALLOWED_FILES:
+                target = source / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("ignored fixture", encoding="utf-8")
+            with self.assertRaises(site_package.PackageError):
+                site_package.package_site(source, Path(temporary) / "out")
+
     def test_custom_source_path_is_recorded(self):
         with tempfile.TemporaryDirectory() as temporary:
             source = Path(temporary) / "custom-site"

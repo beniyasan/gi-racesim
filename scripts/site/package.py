@@ -46,7 +46,7 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _source_commit(root: Path) -> str:
+def _git_root(root: Path) -> Path:
     try:
         repo_result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
@@ -59,20 +59,54 @@ def _source_commit(root: Path) -> str:
     except (OSError, subprocess.CalledProcessError) as error:
         raise PackageError("source commit could not be determined") from error
     repo_root = Path(repo_result.stdout.strip()).resolve()
+    return repo_root
+
+
+def _source_commit(root: Path, files: Iterable[str]) -> str:
+    files = tuple(files)
+    repo_root = _git_root(root)
     try:
         relative_source = root.resolve().relative_to(repo_root)
     except ValueError as error:
         raise PackageError("source must be inside its Git repository") from error
-    status = subprocess.run(
-        ["git", "status", "--porcelain=v1", "--untracked-files=all", "--", relative_source.as_posix()],
+
+    repository_files = [
+        (relative_source / relative).as_posix()
+        for relative in files
+    ]
+    tracked_result = subprocess.run(
+        ["git", "ls-files", "--cached", "-z", "--", *repository_files],
         cwd=repo_root,
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True,
     )
-    if status.stdout:
-        raise PackageError("source tree has uncommitted changes; pass a reviewed source commit explicitly")
+    tracked = {
+        path.decode("utf-8")
+        for path in tracked_result.stdout.split(b"\0")
+        if path
+    }
+    missing = sorted(set(repository_files) - tracked)
+    if missing:
+        raise PackageError("source files are not tracked at HEAD: " + ", ".join(missing))
+
+    for relative, repository_file in zip(files, repository_files):
+        try:
+            head_result = subprocess.run(
+                ["git", "show", f"HEAD:{repository_file}"],
+                cwd=repo_root,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except (OSError, subprocess.CalledProcessError) as error:
+            raise PackageError(f"source file is unavailable at HEAD: {repository_file}") from error
+        if (root / relative).read_bytes() != head_result.stdout:
+            raise PackageError(
+                f"source file differs from HEAD: {repository_file}; "
+                "pass a reviewed source commit explicitly"
+            )
+
     try:
         result = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -93,17 +127,9 @@ def _source_commit(root: Path) -> str:
 def _source_label(root: Path) -> str:
     """Return a truthful, portable label for the supplied source directory."""
     try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            cwd=root,
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        repo_root = Path(result.stdout.strip()).resolve()
+        repo_root = _git_root(root)
         return root.resolve().relative_to(repo_root).as_posix() or "."
-    except (OSError, subprocess.CalledProcessError, ValueError):
+    except (PackageError, ValueError):
         return root.as_posix()
 
 
@@ -168,7 +194,10 @@ def package_site(
         raise PackageError(f"refusing to overwrite a non-empty output: {output}")
 
     selected = _validate_source(source_root, ALLOWED_FILES)
-    commit = source_commit.lower() if source_commit else _source_commit(source_root)
+    commit = source_commit.lower() if source_commit else _source_commit(
+        source_root,
+        [relative for relative, _ in selected],
+    )
     if not SHA1_RE.fullmatch(commit):
         raise PackageError("source commit must be a full lowercase SHA-1")
 
