@@ -9,6 +9,9 @@ description = "Offline-first race simulation data preparation"
 requires-python = ">=3.10"
 dependencies = []
 
+[project.scripts]
+gi-racesim-collector = "gi_racesim.collector.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

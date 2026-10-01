@@ -83,6 +83,19 @@ class Gate:
         CREATE TABLE IF NOT EXISTS attempt(
             token TEXT PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES task(id),
             started REAL NOT NULL, finished REAL, outcome TEXT, raw_ref TEXT);
+        CREATE TABLE IF NOT EXISTS response(
+            raw_ref TEXT PRIMARY KEY,
+            token TEXT NOT NULL REFERENCES attempt(token),
+            task_id INTEGER NOT NULL REFERENCES task(id),
+            requested_url TEXT NOT NULL,
+            response_url TEXT,
+            fetched REAL NOT NULL,
+            status_code INTEGER NOT NULL,
+            headers_json TEXT NOT NULL,
+            body_sha256 TEXT NOT NULL,
+            body_bytes INTEGER NOT NULL,
+            path TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS response_task_idx ON response(task_id, fetched);
         CREATE TABLE IF NOT EXISTS review(
             id INTEGER PRIMARY KEY, at REAL NOT NULL, action TEXT NOT NULL, note TEXT NOT NULL);
         ''')
@@ -136,6 +149,96 @@ class Gate:
             self.db.execute('UPDATE control SET paused=NULL WHERE id=1')
             self.db.execute('INSERT INTO review(at,action,note) VALUES(?,?,?)',
                             (ts,'resume_without_resetting_budget',note))
+
+    def pause(self, now: datetime, note: str):
+        """Pause the source group without changing any request counters.
+
+        An in-flight token is deliberately left untouched.  The operator must
+        first establish whether that worker is still alive and abandon the
+        request explicitly if it is not; a pause command must never make an
+        uncertain request look complete.
+        """
+        if not note.strip():
+            raise ValueError('pause note required')
+        with self.tx():
+            ts, r = self._clock(now)
+            if r['active_token']:
+                raise ValueError('active or uncertain request: confirm worker stopped, then abandon')
+            self.db.execute('UPDATE control SET paused=? WHERE id=1', (note.strip(),))
+            self.db.execute('INSERT INTO review(at,action,note) VALUES(?,?,?)',
+                            (ts,'pause',note.strip()))
+
+    def abandon(self, token: str, now: datetime, note: str):
+        """Conservatively close an uncertain request after worker review."""
+        if not note.strip():
+            raise ValueError('abandon note required')
+        self.finish(token, now, outcome='abandoned')
+        with self.tx():
+            ts, _ = self._clock(now)
+            self.db.execute('INSERT INTO review(at,action,note) VALUES(?,?,?)',
+                            (ts,'abandon',note.strip()))
+
+    def record_response(self, token: str, now: datetime, *, raw_ref: str,
+                        path: str, status_code: int, headers: dict[str, str],
+                        body_sha256: str, body_bytes: int,
+                        response_url: str | None = None):
+        """Associate a saved response and its metadata with the active attempt.
+
+        The filesystem write is performed by the cache store before this method
+        is called.  Keeping the association in the same SQLite ledger means a
+        response can be found after a process restart and the later ``finish``
+        call can refer to the exact saved bytes.
+        """
+        if not raw_ref or not path:
+            raise ValueError('response reference and path required')
+        if not isinstance(status_code, int) or not 100 <= status_code <= 599:
+            raise ValueError('invalid HTTP status')
+        if not isinstance(body_sha256, str) or len(body_sha256) != 64:
+            raise ValueError('SHA-256 response digest required')
+        try:
+            int(body_sha256, 16)
+        except (TypeError, ValueError) as exc:
+            raise ValueError('SHA-256 response digest must be hexadecimal') from exc
+        if not isinstance(body_bytes, int) or body_bytes < 0:
+            raise ValueError('non-negative response size required')
+        try:
+            encoded_headers = json.dumps(dict(headers), sort_keys=True)
+        except (TypeError, ValueError) as exc:
+            raise ValueError('response headers must be JSON serializable') from exc
+        with self.tx():
+            ts, r = self._clock(now)
+            if r['active_token'] != token:
+                raise ValueError('not the active request')
+            a = self.db.execute('SELECT * FROM attempt WHERE token=?',(token,)).fetchone()
+            if a is None or a['finished'] is not None:
+                raise ValueError('invalid active attempt')
+            self.db.execute('''INSERT INTO response(
+                raw_ref,token,task_id,requested_url,response_url,fetched,status_code,
+                headers_json,body_sha256,body_bytes,path)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?)''',
+                (raw_ref,token,a['task_id'],
+                 self.db.execute('SELECT url FROM task WHERE id=?',(a['task_id'],)).fetchone()['url'],
+                 response_url,ts,status_code,encoded_headers,body_sha256,body_bytes,path))
+
+    def response(self, raw_ref: str) -> dict | None:
+        row = self.db.execute('SELECT * FROM response WHERE raw_ref=?',(raw_ref,)).fetchone()
+        if row is None:
+            return None
+        item = dict(row)
+        item['headers'] = json.loads(item.pop('headers_json'))
+        return item
+
+    def responses(self, raw_ref: str | None = None) -> list[dict]:
+        if raw_ref is None:
+            rows = self.db.execute('SELECT * FROM response ORDER BY fetched,raw_ref').fetchall()
+        else:
+            rows = self.db.execute('SELECT * FROM response WHERE raw_ref=?',(raw_ref,)).fetchall()
+        result=[]
+        for row in rows:
+            item=dict(row)
+            item['headers']=json.loads(item.pop('headers_json'))
+            result.append(item)
+        return result
 
     def enqueue(self, url: str, *, snapshot_key='historical_v1', kind='result',
                 priority=0, discovered_from: str, ready_at: datetime | None = None) -> int:
@@ -247,4 +350,5 @@ class Gate:
         control=dict(self.db.execute('SELECT * FROM control WHERE id=1').fetchone())
         control['tasks']={r['status']:r['n'] for r in self.db.execute('SELECT status,count(*) n FROM task GROUP BY status')}
         control['total_reserved_requests']=self.db.execute('SELECT count(*) FROM attempt').fetchone()[0]
+        control['saved_responses']=self.db.execute('SELECT count(*) FROM response').fetchone()[0]
         return control

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.giracesim.collector</string>
+
+  <!-- Replace USERNAME and CHECKED_OUT_ENGINE with a reviewed immutable copy.
+       This template intentionally has no live-HTTP opt-in. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>-m</string>
+    <string>gi_racesim.collector</string>
+    <string>--db</string>
+    <string>/Users/USERNAME/Library/Application Support/GIRaceSim/state/collector.sqlite3</string>
+    <string>--cache-dir</string>
+    <string>/Users/USERNAME/Library/Application Support/GIRaceSim/raw</string>
+    <string>tick</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPATH</key>
+    <string>/Users/USERNAME/CHECKED_OUT_ENGINE/packages/engine/src</string>
+  </dict>
+
+  <!-- launchd scheduling never bypasses the persistent gate. -->
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StartInterval</key>
+  <integer>120</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>/Users/USERNAME/Library/Application Support/GIRaceSim/logs/collector.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/USERNAME/Library/Application Support/GIRaceSim/logs/collector.stderr.log</string>
+</dict>
+</plist>
