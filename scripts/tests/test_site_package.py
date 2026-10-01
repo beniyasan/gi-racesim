@@ -1,6 +1,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 
@@ -24,6 +25,7 @@ class SitePackageTests(unittest.TestCase):
             )
             self.assertEqual(manifest["format"], "gi-racesim-site-package/v1")
             self.assertEqual(manifest["source_commit"], "a" * 40)
+            self.assertEqual(manifest["source_root"], "apps/site")
             self.assertEqual(
                 [entry["path"] for entry in manifest["files"]],
                 list(site_package.ALLOWED_FILES),
@@ -36,6 +38,55 @@ class SitePackageTests(unittest.TestCase):
                 sorted(path.relative_to(output).as_posix() for path in output.rglob("*") if path.is_file()),
                 sorted((*site_package.ALLOWED_FILES, site_package.MANIFEST_NAME)),
             )
+
+    def test_package_hash_includes_source_metadata(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = ROOT / "apps" / "site"
+            first = site_package.package_site(source, Path(temporary) / "first", source_commit="a" * 40)
+            second = site_package.package_site(source, Path(temporary) / "second", source_commit="b" * 40)
+            self.assertNotEqual(first["package_sha256"], second["package_sha256"])
+
+    def test_default_commit_rejects_dirty_source_tree(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary) / "repo"
+            source = repository / "apps" / "site"
+            for relative in site_package.ALLOWED_FILES:
+                target = source / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("fixture", encoding="utf-8")
+            subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+            subprocess.run(["git", "add", "."], cwd=repository, check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=GIRaceSim test",
+                    "-c",
+                    "user.email=test@example.invalid",
+                    "commit",
+                    "-qm",
+                    "fixture",
+                ],
+                cwd=repository,
+                check=True,
+            )
+            (source / "index.html").write_text("changed", encoding="utf-8")
+            with self.assertRaises(site_package.PackageError):
+                site_package.package_site(source, Path(temporary) / "out")
+
+    def test_custom_source_path_is_recorded(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "custom-site"
+            for relative in site_package.ALLOWED_FILES:
+                target = source / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("fixture", encoding="utf-8")
+            manifest = site_package.package_site(
+                source,
+                Path(temporary) / "out",
+                source_commit="d" * 40,
+            )
+            self.assertEqual(manifest["source_root"], source.resolve().as_posix())
 
     def test_unexpected_source_file_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:

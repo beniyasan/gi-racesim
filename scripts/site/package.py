@@ -48,9 +48,35 @@ def _sha256(data: bytes) -> str:
 
 def _source_commit(root: Path) -> str:
     try:
+        repo_result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=root,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise PackageError("source commit could not be determined") from error
+    repo_root = Path(repo_result.stdout.strip()).resolve()
+    try:
+        relative_source = root.resolve().relative_to(repo_root)
+    except ValueError as error:
+        raise PackageError("source must be inside its Git repository") from error
+    status = subprocess.run(
+        ["git", "status", "--porcelain=v1", "--untracked-files=all", "--", relative_source.as_posix()],
+        cwd=repo_root,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if status.stdout:
+        raise PackageError("source tree has uncommitted changes; pass a reviewed source commit explicitly")
+    try:
         result = subprocess.run(
             ["git", "rev-parse", "HEAD"],
-            cwd=root,
+            cwd=repo_root,
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -62,6 +88,23 @@ def _source_commit(root: Path) -> str:
     if not SHA1_RE.fullmatch(commit):
         raise PackageError("source commit is not a full SHA-1")
     return commit
+
+
+def _source_label(root: Path) -> str:
+    """Return a truthful, portable label for the supplied source directory."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=root,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        repo_root = Path(result.stdout.strip()).resolve()
+        return root.resolve().relative_to(repo_root).as_posix() or "."
+    except (OSError, subprocess.CalledProcessError, ValueError):
+        return root.as_posix()
 
 
 def _validate_source(root: Path, files: Iterable[str]) -> list[tuple[str, bytes]]:
@@ -97,10 +140,13 @@ def _validate_source(root: Path, files: Iterable[str]) -> list[tuple[str, bytes]
     return selected
 
 
-def _package_hash(entries: list[dict[str, object]]) -> str:
-    canonical = "".join(
-        f"{entry['path']}\0{entry['bytes']}\0{entry['sha256']}\n"
-        for entry in entries
+def _package_hash(manifest: dict[str, object]) -> str:
+    """Hash all package metadata and file entries except this self-reference."""
+    canonical = json.dumps(
+        manifest,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
     ).encode("utf-8")
     return _sha256(canonical)
 
@@ -122,7 +168,7 @@ def package_site(
         raise PackageError(f"refusing to overwrite a non-empty output: {output}")
 
     selected = _validate_source(source_root, ALLOWED_FILES)
-    commit = source_commit.lower() if source_commit else _source_commit(source_root.parent.parent)
+    commit = source_commit.lower() if source_commit else _source_commit(source_root)
     if not SHA1_RE.fullmatch(commit):
         raise PackageError("source commit must be a full lowercase SHA-1")
 
@@ -136,11 +182,11 @@ def package_site(
 
     manifest: dict[str, object] = {
         "format": PACKAGE_FORMAT,
-        "source_root": "apps/site",
+        "source_root": _source_label(source_root),
         "source_commit": commit,
         "files": entries,
     }
-    manifest["package_sha256"] = _package_hash(entries)
+    manifest["package_sha256"] = _package_hash(manifest)
     (output / MANIFEST_NAME).write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
