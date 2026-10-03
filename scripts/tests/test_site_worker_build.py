@@ -57,6 +57,9 @@ for (const relative of files) {
   const expected = await readFile(new URL(relative, SOURCE_URI));
   assert.deepEqual(Buffer.from(await response.arrayBuffer()), expected, relative);
 }
+const root = await worker.fetch(new Request('https://site.test/'), {}, {});
+assert.equal(root.status, 200);
+assert.deepEqual(Buffer.from(await root.arrayBuffer()), await readFile(new URL('index.html', SOURCE_URI)));
 const head = await worker.fetch(new Request('https://site.test/', { method: 'HEAD' }), {}, {});
 assert.equal(head.status, 200);
 assert.equal(await head.text(), '');
