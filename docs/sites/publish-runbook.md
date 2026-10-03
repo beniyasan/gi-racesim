@@ -1,12 +1,10 @@
 # Sites公開経路の検査手順（WORK-002）
 
-この手順は、`apps/site`を本人限定のChatGPT Siteへ持ち込む経路を記録する
-ためのものです。Siteの作成・保存・公開はGitHub pushから自動では始まりません。
-実行結果は [`compatibility-report.md`](compatibility-report.md) に追記します。
+この手順は、`apps/site`を本人限定のChatGPT Siteへ持ち込む経路と、合成fixtureの保存契約を記録する。GitHub pushからSiteの公開は自動で始まらない。公開URLを発行しない検証では、Sitesの保存版までで止める。
 
 ## 1. Gitと配布物を固定する
 
-mainのレビュー済みコミットを起点に、リポジトリ直下で次を実行します。
+レビュー済みコミットを起点に実行する。
 
 ```bash
 git status --short
@@ -15,78 +13,42 @@ python3 scripts/site/package.py --output /private/tmp/gi-racesim-site-package
 cat /private/tmp/gi-racesim-site-package/GIRACESIM_SITE_MANIFEST.json
 ```
 
-出力先が存在して中身がある場合、スクリプトは上書きせず停止します。manifestには
-ソースSHA、許可したファイルのサイズとSHA-256、配布物のSHA-256が入ります。
-`apps/site`以外のファイル、原HTML、SQLite、モデル、認証情報は配布物に含めません。
-配布物を作り直した場合は、Siteへ渡した版とmanifestを対応付けて残します。
+出力先が存在して中身がある場合、スクリプトは上書きせず停止する。manifestにはソースSHA、許可したファイルのサイズとSHA-256、配布物のSHA-256を残す。原HTML、SQLite、モデル、認証情報は配布物に含めない。
 
-## 2. Sitesで作成・プレビューする
+## 2. Sitesへ保存版を作る
 
-現在の公式操作はChatGPT webのWork、またはデスクトップアプリのWork/Codexから
-Site作成を開始し、プロンプトに「website」または`@Sites`を含める流れです。
-配布物を入力できるか、`apps/site`をローカルソースとして扱えるかはアカウントと
-表示されたUIで確認します。UIにその経路がない場合は、未確認のCLI/APIを作らず、
-その時点で停止してreportに記録します。
+Sitesの公式Work/Codex操作で既存Siteを開き、source repository write credentialを一時的に取得する。認証トークンはコマンド引数、ファイル、ログへ書かない。Site workflowへ標準入力で渡し、`commit_sha`とarchiveを保存する。
 
-プレビューでは、合成fixtureを表示し、次を確認します。
+`sites_save_site_version`へ渡すのは、push済みsourceの完全SHAと同じsourceから作ったarchiveだけにする。保存後は`sites_get_site_version`で次を再取得する。
 
-- レース名、入力時点、データ版、由来が表示される
-- ラップ分布と代表試行の地点別隊列が表示される
-- `quality`の観測不足と合成データの注記が残る
-- JSONの文字列がHTMLとして実行されない
-- Siteを開くだけで競馬サイトや任意URLへ通信しない
+- Site version numberとversion ID
+- source commit SHA
+- archive content hash、file count、size
+- `deployment_id`（公開しない場合は`null`）
 
-変更を保存する場合は、公開前にSiteのバージョンを保存します。デプロイURLは
-production URLとして扱われるため、プレビュー確認前にPublishしません。
+Sitesの配信URLはproduction URLなので、公開しない検証ではdeploy操作を呼ばない。今回の実績はversion 3、source commit `1e6abadb36d81516785c77793123f479a16aba64`、archive hash `sha256:ccb91e0f1f05aac933935cc1198a987f252ba6f4f9d2614b3812a72b03d54cb3`である。
 
 ## 3. 本人限定のアクセスを確認する
 
-Share設定では、最初に所有者とworkspace管理者だけの範囲を選びます。公開範囲を
-`Anyone on the Internet`へ変更しません。所有者のプレビュー、未ログイン状態、権限の
-ないアカウントまたはブラウザで、画面・ファイル・APIの各経路を確認します。
-未検証の経路は成功と記録しません。
+Sites APIのaccess policyで、`access_mode=custom`、所有者のaccount user IDだけ、外部visitor 0、editor 0を確認する。これは設定値の確認であり、実HTTPの拒否確認ではない。
 
-Site作成後に表示されたURL、Share設定、保存版、配布物manifestのSHAをreportへ記録
-します。認証状態はブラウザの実際の表示（ログイン誘導、401/403等）で記録し、
-リポジトリのPrivate設定だけから本人限定とは判断しません。
+実際の拒否を確認できるのは配信URLがある場合だけである。未ログイン、権限のない別アカウントについて、画面・API・ファイルの各経路を実測し、ログイン誘導または401/403を記録する。公開URLがない状態でアクセス拒否を完了扱いにしない。
 
-## 4. 保存と再訪を確認する
+## 4. 保存APIとハッシュを確認する
 
-合成fixtureを1件だけ取り込み、Siteを閉じて再訪します。画面に同じ内容が表示され、
-保存したデータのハッシュが変わらないことを記録します。D1/R2等の保存機能がUIで
-提供される場合も、実際に確認できた経路・権限・失敗時の挙動だけを記録します。
-未確認のバインディング名やAPIをコードに追加しません。
+Site runtimeではブラウザlocalStorageを正本にしない。`oai-authenticated-user-id`を必須とし、D1に所有者・run ID・SHA-256・R2 object key・バイト数を保存し、R2にアップロードしたUTF-8原文を保存する。
 
-コードを更新した場合は、保存済みデータが残ることと、Siteのコード版と結果データの
-版が別に確認できることを検査します。失敗した取込は一覧へ公開せず、既存の正常な
-合成runを壊さないことを確認します。
+- `POST /api/runs`は認証なしを401、同じowner/runで別SHAを409、サイズ超過を413にする。
+- `GET /api/runs/:run_id`は所有者以外を404とし、R2から読んだ原文を再ハッシュしてD1のSHA・バイト数と一致しなければ500にする。
+- JSONを`JSON.stringify`してから比較せず、入力時と読出し時の原バイト列を比較する。
+- コードを更新しても、同じowner/runのデータを読み出せることを別のWorkerインスタンスで確認する。
+
+ローカルの`apps/site/tests/storage.test.mjs`はモックD1/R2でこの境界を検査する。一時DB・合成fixtureだけを使い、本番データへ接続しない。
 
 ## 5. 記録と停止条件
 
-最低限、次を [`compatibility-report.md`](compatibility-report.md) に記録します。
+[`compatibility-report.md`](compatibility-report.md)へsource SHA、package hash、Site version、archive hash、audience、fixture入力SHA、再訪前後のSHA、コード更新前後の結果を記録する。
 
-| 項目 | 記録内容 |
-| --- | --- |
-| source | Git SHA、配布物manifestのSHA-256 |
-| Site | Site名、保存版、表示されたURL |
-| audience | Shareで選んだ範囲、未ログイン/権限なしの実挙動 |
-| import | run_id、入力JSONのSHA、再訪後のSHA |
-| code update | 更新前後のSite版とデータの保持 |
-| 未実施 | 確認できなかった経路、理由、次の本人操作 |
+公開範囲が想定より広い、認証ヘッダーが欠落する、入力データが欠落する、R2/D1のSHAが一致しない、またはSiteが外部取得を始める場合は、deployや再試行をせず停止する。
 
-公開範囲が想定より広い、認証要求が不明、入力データが欠落する、またはSiteが
-外部取得を始める場合は、Publishや再試行をせず停止します。
-
-2026-10-02に、合成fixture `run-synthetic-001`（入力SHA-256
-`9070dd48ab3fcbb21fb5da44d3af53235212b69ee3c634d20af4b5afbdb35845`）を使った
-下書きversion 2について、保存版`index.html`のプレビュー表示、ビューアを閉じた後の
-同じ下書きからの再表示を確認した。これはfixture入力の保存確認であり、実際のアクセス
-境界や`apps/site`/allowlist packageの取り込みを確認したものではない。公開URLは発行していない。Sitesの
-インタラクティブプレビュー基盤はサンドボックス制限で起動できなかったため、実機確認の
-証拠は互換性レポートに記録した保存版HTMLの非公開sandboxプレビューである。
-
-再訪前後で画面内容は同じだったが、保存バイト列の再訪後SHAは取得していないため、
-runbookのハッシュ一致による保存受入条件は未確認として記録する。
-
-このrunbookは公開操作を自動化しない。公開、共有範囲変更、実データ投入、未確認の
-CLI/API追加は行わない。
+このrunbookは公開操作を自動化しない。公開、共有範囲変更、実データ投入、LaunchAgent登録は別の本人操作とする。

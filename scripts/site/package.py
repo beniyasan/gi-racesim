@@ -21,6 +21,7 @@ MANIFEST_NAME = "GIRACESIM_SITE_MANIFEST.json"
 ALLOWED_FILES = (
     "index.html",
     "src/app.js",
+    "src/content-hash.js",
     "src/styles.css",
     "src/validator.js",
     "public/favicon.svg",
@@ -30,9 +31,14 @@ ALLOWED_FILES = (
 # These files are reviewed source but are intentionally not sent to the Site
 # runtime.  Keeping them explicit makes a newly added source file fail closed.
 SOURCE_ONLY_FILES = (
+    "db/schema.sql",
     "package.json",
     "tests/assets.test.mjs",
+    "tests/content-hash.test.mjs",
+    "tests/storage.test.mjs",
     "tests/validator.test.mjs",
+    "src/storage.js",
+    "src/worker.js",
 )
 EXPECTED_SOURCE_FILES = frozenset((*ALLOWED_FILES, *SOURCE_ONLY_FILES))
 SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
