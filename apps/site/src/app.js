@@ -5,6 +5,7 @@ const root = document.querySelector("#app");
 const fileInput = document.querySelector("#bundle-file");
 const fixtureButton = document.querySelector("#load-fixture");
 const saveButton = document.querySelector("#save-run");
+const reloadButton = document.querySelector("#reload-run");
 const saveStatus = document.querySelector("#save-status");
 let schemaPromise;
 let currentText = null;
@@ -50,8 +51,19 @@ async function loadJsonText(text) {
   currentHash = await sha256Hex(utf8Bytes(text));
   currentRunId = value.run_id;
   saveButton.disabled = false;
+  reloadButton.disabled = false;
   saveStatus.textContent = "";
   render(value, currentHash);
+}
+
+async function reloadPersisted() {
+  const loaded = await fetch(`/api/runs/${encodeURIComponent(currentRunId)}`, { cache: "no-store" });
+  if (!loaded.ok) throw new Error(`再読込API HTTP ${loaded.status}`);
+  const loadedBytes = new Uint8Array(await loaded.arrayBuffer());
+  const loadedHash = await sha256Hex(loadedBytes);
+  if (loadedHash !== currentHash) throw new Error("保存後のSHA-256が一致しません");
+  await loadJsonText(new TextDecoder().decode(loadedBytes));
+  return loadedHash;
 }
 
 fileInput.addEventListener("change", async () => {
@@ -78,6 +90,7 @@ fixtureButton.addEventListener("click", async () => {
 saveButton.addEventListener("click", async () => {
   if (!currentText || !currentRunId) return;
   saveButton.disabled = true;
+  reloadButton.disabled = true;
   saveStatus.textContent = "保存中…";
   try {
     const saved = await fetch("/api/runs", {
@@ -86,18 +99,29 @@ saveButton.addEventListener("click", async () => {
       body: currentText,
     });
     if (!saved.ok) throw new Error(`保存API HTTP ${saved.status}`);
-    const loaded = await fetch(`/api/runs/${encodeURIComponent(currentRunId)}`, { cache: "no-store" });
-    if (!loaded.ok) throw new Error(`再読込API HTTP ${loaded.status}`);
-    const loadedBytes = new Uint8Array(await loaded.arrayBuffer());
-    const loadedHash = await sha256Hex(loadedBytes);
-    if (loadedHash !== currentHash) throw new Error("保存後のSHA-256が一致しません");
-    await loadJsonText(new TextDecoder().decode(loadedBytes));
-    saveStatus.textContent = `保存・再読込済み (${loadedHash})`;
+    saveStatus.textContent = `保存・再読込済み (${await reloadPersisted()})`;
   } catch (error) {
     saveStatus.textContent = "";
     showError(error);
   } finally {
     saveButton.disabled = false;
+    reloadButton.disabled = false;
+  }
+});
+
+reloadButton.addEventListener("click", async () => {
+  if (!currentRunId) return;
+  saveButton.disabled = true;
+  reloadButton.disabled = true;
+  saveStatus.textContent = "再読込中…";
+  try {
+    saveStatus.textContent = `保存済みを再読込済み (${await reloadPersisted()})`;
+  } catch (error) {
+    saveStatus.textContent = "";
+    showError(error);
+  } finally {
+    saveButton.disabled = false;
+    reloadButton.disabled = false;
   }
 });
 

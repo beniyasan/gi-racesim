@@ -11,7 +11,7 @@
 <body>
   <main>
     <header><p class="eyebrow">GIRaceSim / research viewer</p><h1>レース展開の記録</h1><p>ラップと地点別隊列を、データの由来と観測不足を分けて確認します。</p></header>
-    <nav class="toolbar" aria-label="データ操作"><button id="load-fixture" type="button">合成fixtureを表示</button><label>JSONを選択<input id="bundle-file" type="file" accept="application/json,.json"></label><button id="save-run" type="button" disabled>Siteへ保存して再読込</button><span id="save-status" role="status" aria-live="polite"></span></nav>
+    <nav class="toolbar" aria-label="データ操作"><button id="load-fixture" type="button">合成fixtureを表示</button><label>JSONを選択<input id="bundle-file" type="file" accept="application/json,.json"></label><button id="save-run" type="button" disabled>Siteへ保存して再読込</button><button id="reload-run" type="button" disabled>保存済みを再読込</button><span id="save-status" role="status" aria-live="polite"></span></nav>
     <div id="app" aria-live="polite"></div>
   </main>
   <script type="module" src="./src/app.js"></script>
