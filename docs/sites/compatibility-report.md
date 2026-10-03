@@ -41,7 +41,7 @@
 | 未ログインの拒否 | 未実施 | 配信URLがないため実HTTP検査不可 |
 | 合成JSONの再訪後の保存バイト列SHA一致 | 未実施 | 既存version 2の表示再訪は画面一致だけ。version 3は保存版でありデータ保存なし |
 | コード更新後のデータ保持 | 未実施 | 配信・D1/R2保存がないため不可 |
-| D1/R2または代替保存経路 | コードとモック検証済み、クラウド実機未実施 | version 5にD1 `DB`・R2 `BUCKET`、保存API、`drizzle/0001_viewer_runs.sql`を含めた。未deployのためSite上のDB読出しは未確認 |
+| D1/R2または代替保存経路 | コードとモック検証済み、クラウド実機未実施 | version 5にD1 `DB`・R2 `BUCKET`、保存API、`drizzle/0001_viewer_runs.sql`を含めた。保存版一覧ではdeployment_id=null、database overviewもbinding/table空のため、Site上のDB読出しは未確認 |
 
 ## 実機確認記録
 
