@@ -12,8 +12,10 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
 import shutil
 import sys
+import subprocess
 import tempfile
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -23,6 +25,7 @@ from package import ALLOWED_FILES, package_site  # noqa: E402
 
 
 RUNTIME_FILES = ("src/worker.js", "src/storage.js")
+SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def _asset_map(package_dir: Path) -> dict[str, str]:
@@ -99,6 +102,87 @@ def _hosting_file(source_root: Path) -> Path:
     raise ValueError("missing .openai/hosting.json")
 
 
+def _git_output(repo_root: Path, *arguments: str) -> bytes:
+    try:
+        result = subprocess.run(
+            ["git", *arguments],
+            cwd=repo_root,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise ValueError("selected source commit is not available") from error
+    return result.stdout
+
+
+def _selected_commit(source_root: Path, source_commit: str | None) -> tuple[Path, str]:
+    repo_root = Path(_git_output(source_root, "rev-parse", "--show-toplevel").decode().strip()).resolve()
+    commit = source_commit.lower() if source_commit else _git_output(repo_root, "rev-parse", "HEAD").decode().strip().lower()
+    if not SHA1_RE.fullmatch(commit):
+        raise ValueError("source commit must be a full lowercase SHA-1")
+    _git_output(repo_root, "cat-file", "-e", f"{commit}^{{commit}}")
+    return repo_root, commit
+
+
+def _regular_file(path: Path, relative: str) -> bytes:
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"required source file is not a regular file: {relative}")
+    return path.read_bytes()
+
+
+def _migration_files(repo_root: Path) -> list[str]:
+    root = repo_root / "drizzle"
+    if not root.exists():
+        return []
+    if root.is_symlink() or not root.is_dir():
+        raise ValueError("drizzle must be a regular directory")
+    paths: list[str] = []
+    for path in root.rglob("*"):
+        relative = path.relative_to(repo_root).as_posix()
+        if path.is_symlink() or (not path.is_file() and not path.is_dir()):
+            raise ValueError(f"migration tree contains a non-regular entry: {relative}")
+        if path.is_file():
+            paths.append(relative)
+    return sorted(paths)
+
+
+def _validate_selected_source(source_root: Path, source_commit: str | None) -> tuple[Path, str, Path, list[str]]:
+    """Verify every file copied into the Worker artifact against one commit."""
+    repo_root, commit = _selected_commit(source_root, source_commit)
+    hosting = _hosting_file(source_root)
+    try:
+        hosting_relative = hosting.relative_to(repo_root).as_posix()
+    except ValueError as error:
+        raise ValueError("hosting manifest must be inside the Git repository") from error
+
+    try:
+        source_relative = source_root.relative_to(repo_root)
+    except ValueError as error:
+        raise ValueError("source root must be inside the Git repository") from error
+
+    source_files = [*ALLOWED_FILES, *RUNTIME_FILES]
+    paths = {
+        (source_relative / relative).as_posix(): source_root / relative
+        for relative in source_files
+    }
+    paths[hosting_relative] = hosting
+    current_migrations = _migration_files(repo_root)
+    committed_migrations = _git_output(repo_root, "ls-tree", "-r", "--name-only", commit, "--", "drizzle").decode().splitlines()
+    committed_migrations = sorted(path for path in committed_migrations if path)
+    if current_migrations != committed_migrations:
+        raise ValueError("migration files differ from selected source commit")
+    for relative in current_migrations:
+        paths[relative] = repo_root / relative
+
+    for relative, path in paths.items():
+        current = _regular_file(path, relative)
+        committed = _git_output(repo_root, "show", f"{commit}:{relative}")
+        if current != committed:
+            raise ValueError(f"source file differs from selected commit: {relative}")
+    return repo_root, commit, hosting, current_migrations
+
+
 def build_worker(source_root: Path, output: Path, *, source_commit: str | None = None) -> dict[str, object]:
     source_root = source_root.resolve()
     output = output.resolve()
@@ -109,9 +193,11 @@ def build_worker(source_root: Path, output: Path, *, source_commit: str | None =
     if output.exists() and (not output.is_dir() or any(output.iterdir())):
         raise ValueError(f"refusing to overwrite a non-empty output: {output}")
 
+    _, selected_commit, hosting, migration_files = _validate_selected_source(source_root, source_commit)
+
     with tempfile.TemporaryDirectory(prefix="gi-racesim-site-package-") as temporary:
         package_dir = Path(temporary) / "package"
-        manifest = package_site(source_root, package_dir, source_commit=source_commit)
+        manifest = package_site(source_root, package_dir, source_commit=selected_commit)
         output.mkdir(parents=True, exist_ok=True)
         for path in package_dir.rglob("*"):
             relative = path.relative_to(package_dir)
@@ -129,7 +215,6 @@ def build_worker(source_root: Path, output: Path, *, source_commit: str | None =
             shutil.copyfile(source_root / relative, target)
         (server / "index.js").write_text(_worker_entrypoint(_asset_map(package_dir)), encoding="utf-8")
 
-        hosting = _hosting_file(source_root)
         hosting_target = output / ".openai" / "hosting.json"
         hosting_target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(hosting, hosting_target)
@@ -139,6 +224,7 @@ def build_worker(source_root: Path, output: Path, *, source_commit: str | None =
         "source_commit": manifest["source_commit"],
         "package_sha256": manifest["package_sha256"],
         "asset_count": len(_asset_map(output)),
+        "migration_count": len(migration_files),
     }
 
 

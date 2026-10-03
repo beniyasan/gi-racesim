@@ -4,7 +4,12 @@ import { sha256Hex, utf8Bytes } from "./content-hash.js";
 const root = document.querySelector("#app");
 const fileInput = document.querySelector("#bundle-file");
 const fixtureButton = document.querySelector("#load-fixture");
+const saveButton = document.querySelector("#save-run");
+const saveStatus = document.querySelector("#save-status");
 let schemaPromise;
+let currentText = null;
+let currentHash = null;
+let currentRunId = null;
 
 function schema() {
   schemaPromise ??= fetch("./public/schema.json", { cache: "no-store" }).then(async (response) => {
@@ -41,7 +46,12 @@ async function loadJsonText(text) {
   if (new TextEncoder().encode(text).byteLength > MAX_BYTES) throw new ContractError("bundle exceeds 5 MiB");
   const value = JSON.parse(text);
   validateBundle(value, await schema());
-  render(value, await sha256Hex(utf8Bytes(text)));
+  currentText = text;
+  currentHash = await sha256Hex(utf8Bytes(text));
+  currentRunId = value.run_id;
+  saveButton.disabled = false;
+  saveStatus.textContent = "";
+  render(value, currentHash);
 }
 
 fileInput.addEventListener("change", async () => {
@@ -62,6 +72,32 @@ fixtureButton.addEventListener("click", async () => {
     await loadJsonText(await response.text());
   } catch (error) {
     showError(error);
+  }
+});
+
+saveButton.addEventListener("click", async () => {
+  if (!currentText || !currentRunId) return;
+  saveButton.disabled = true;
+  saveStatus.textContent = "保存中…";
+  try {
+    const saved = await fetch("/api/runs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: currentText,
+    });
+    if (!saved.ok) throw new Error(`保存API HTTP ${saved.status}`);
+    const loaded = await fetch(`/api/runs/${encodeURIComponent(currentRunId)}`, { cache: "no-store" });
+    if (!loaded.ok) throw new Error(`再読込API HTTP ${loaded.status}`);
+    const loadedBytes = new Uint8Array(await loaded.arrayBuffer());
+    const loadedHash = await sha256Hex(loadedBytes);
+    if (loadedHash !== currentHash) throw new Error("保存後のSHA-256が一致しません");
+    await loadJsonText(new TextDecoder().decode(loadedBytes));
+    saveStatus.textContent = `保存・再読込済み (${loadedHash})`;
+  } catch (error) {
+    saveStatus.textContent = "";
+    showError(error);
+  } finally {
+    saveButton.disabled = false;
   }
 });
 
