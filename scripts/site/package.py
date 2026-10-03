@@ -34,6 +34,7 @@ SOURCE_ONLY_FILES = (
     "package.json",
     "tests/assets.test.mjs",
     "tests/content-hash.test.mjs",
+    "tests/migration.test.mjs",
     "tests/storage.test.mjs",
     "tests/validator.test.mjs",
     "src/storage.js",

@@ -23,10 +23,10 @@ function requireBindings(env) {
 }
 
 export async function saveRun(request, env) {
-  const unavailable = requireBindings(env);
-  if (unavailable) return unavailable;
   const owner = ownerFromRequest(request);
   if (!owner) return json({ error: "authentication_required" }, { status: 401 });
+  const unavailable = requireBindings(env);
+  if (unavailable) return unavailable;
   const bytes = new Uint8Array(await request.arrayBuffer());
   if (bytes.byteLength > MAX_BYTES) return json({ error: "bundle_too_large" }, { status: 413 });
   let bundle;
@@ -57,10 +57,10 @@ export async function saveRun(request, env) {
 }
 
 export async function readRun(request, env, runId) {
-  const unavailable = requireBindings(env);
-  if (unavailable) return unavailable;
   const owner = ownerFromRequest(request);
   if (!owner) return json({ error: "authentication_required" }, { status: 401 });
+  const unavailable = requireBindings(env);
+  if (unavailable) return unavailable;
   const row = await env.DB.prepare(
     "SELECT content_hash, object_key, byte_length FROM viewer_runs WHERE owner_id = ? AND run_id = ?",
   ).bind(owner, runId).first();
