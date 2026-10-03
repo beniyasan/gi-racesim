@@ -26,7 +26,7 @@ Sitesの公式Work/Codex操作で既存Siteを開き、source repository write c
 - archive content hash、file count、size
 - `deployment_id`（公開しない場合は`null`）
 
-Sitesの配信URLはproduction URLなので、公開しない検証ではdeploy操作を呼ばない。今回の実績はversion 3、source commit `1e6abadb36d81516785c77793123f479a16aba64`、archive hash `sha256:ccb91e0f1f05aac933935cc1198a987f252ba6f4f9d2614b3812a72b03d54cb3`である。
+Sitesの配信URLはproduction URLなので、公開しない検証ではdeploy操作を呼ばない。今回の実績はversion 3（静的）とversion 4（Worker）である。version 3のsource commitは`1e6abadb36d81516785c77793123f479a16aba64`、version 4は`67cd1745bff7b437c8199f7d785dc2e0ceb65d7c`。version 4のarchive hashは`sha256:8eec5e54c26a60c9c2f2b2f1e51335d6991a787e601c9a613b0a6079b7bb84bb`である。
 
 ## 3. 本人限定のアクセスを確認する
 
