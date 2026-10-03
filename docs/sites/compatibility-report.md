@@ -11,7 +11,7 @@
 | --- | --- |
 | 起点Gitコミット | `e51f53753f743046beebfba3b27bb602c5077cf9` |
 | Siteソース | `apps/site/` の許可リスト8ファイル（worker/storageはSite runtime側） |
-| Site runtime | `src/worker.js`、`src/storage.js`、`db/schema.sql`、D1 `DB`・R2 `BUCKET` 宣言 |
+| Site runtime | `src/worker.js`、`src/storage.js`、`drizzle/0001_viewer_runs.sql`、D1 `DB`・R2 `BUCKET` 宣言 |
 | 共有契約 | `contracts/viewer/v1/` |
 | ローカルmanifest | `GIRACESIM_SITE_MANIFEST.json`、format `gi-racesim-site-package/v1` |
 | package SHA-256 | `6287582140e654d5a774afd5256d4f8d4d60a1a721ea8aca23307c396b432fe0` |

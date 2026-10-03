@@ -31,7 +31,6 @@ ALLOWED_FILES = (
 # These files are reviewed source but are intentionally not sent to the Site
 # runtime.  Keeping them explicit makes a newly added source file fail closed.
 SOURCE_ONLY_FILES = (
-    "db/schema.sql",
     "package.json",
     "tests/assets.test.mjs",
     "tests/content-hash.test.mjs",
