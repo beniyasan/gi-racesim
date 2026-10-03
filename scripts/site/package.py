@@ -21,6 +21,7 @@ MANIFEST_NAME = "GIRACESIM_SITE_MANIFEST.json"
 ALLOWED_FILES = (
     "index.html",
     "src/app.js",
+    "src/content-hash.js",
     "src/styles.css",
     "src/validator.js",
     "public/favicon.svg",
@@ -32,7 +33,12 @@ ALLOWED_FILES = (
 SOURCE_ONLY_FILES = (
     "package.json",
     "tests/assets.test.mjs",
+    "tests/content-hash.test.mjs",
+    "tests/migration.test.mjs",
+    "tests/storage.test.mjs",
     "tests/validator.test.mjs",
+    "src/storage.js",
+    "src/worker.js",
 )
 EXPECTED_SOURCE_FILES = frozenset((*ALLOWED_FILES, *SOURCE_ONLY_FILES))
 SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
