@@ -15,6 +15,22 @@ cat /private/tmp/gi-racesim-site-package/GIRACESIM_SITE_MANIFEST.json
 
 出力先が存在して中身がある場合、スクリプトは上書きせず停止する。manifestにはソースSHA、許可したファイルのサイズとSHA-256、配布物のSHA-256を残す。原HTML、SQLite、モデル、認証情報は配布物に含めない。
 
+Worker版を公開する場合は、静的ファイルを`env.ASSETS`へ依存させず、同じレビュー済みsourceからWorkerのアセットフォールバックを生成する。出力先は一時ディレクトリに限定し、既存の中身を上書きしない。
+
+```bash
+PROJECT="$(mktemp -d /private/tmp/gi-racesim-site-project.XXXXXX)"
+ARCHIVE="${PROJECT}.tgz"
+mkdir -p "$PROJECT/.openai"
+cp .openai/hosting.json "$PROJECT/.openai/hosting.json"
+cp -R drizzle "$PROJECT/drizzle"
+python3 scripts/site/build_worker.py --output "$PROJECT/dist"
+/Users/hiro/.codex/plugins/cache/openai-curated-remote/sites/0.1.75/skills/sites-hosting/scripts/package-site.sh \
+  "$PROJECT" "$ARCHIVE"
+tar -tzf "$ARCHIVE" | head -40
+```
+
+アーカイブには`dist/server/index.js`、`dist/server/worker.js`、`dist/server/storage.js`、`dist/.openai/hosting.json`と、許可リストのビューアー資産が入る。Workerの`/`はこの資産を返し、`/api/runs`だけをD1/R2処理へ渡す。
+
 ## 2. Sitesへ保存版を作る
 
 Sitesの公式Work/Codex操作で既存Siteを開き、source repository write credentialを一時的に取得する。認証トークンはコマンド引数、ファイル、ログへ書かない。Site workflowへ標準入力で渡し、`commit_sha`とarchiveを保存する。
