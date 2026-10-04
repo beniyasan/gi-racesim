@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from html.parser import HTMLParser
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Callable
 
@@ -34,16 +35,48 @@ def _ensure_time(value: datetime | None, now_fn: Callable[[], datetime]) -> date
     return value
 
 
-def _blocked_response(response: HttpResponse) -> bool:
+def _blocked_reason(response: HttpResponse) -> str | None:
+    """Return a non-sensitive reason for a source-wide access stop.
+
+    A vendor name in a normal asset URL is not itself an access denial.  Body
+    matching therefore only uses explicit challenge/interstitial signals; the
+    raw body and header values are never returned in diagnostics.
+    """
     if response.status_code in {401, 403, 407, 429}:
-        return True
+        return f'status_{response.status_code}'
+    if 400 <= response.status_code <= 499 and response.status_code not in {404, 410}:
+        return 'status_4xx'
     headers = response.headers
-    if any(key in headers for key in ('www-authenticate', 'proxy-authenticate',
-                                      'cf-mitigated', 'x-captcha', 'x-challenge')):
-        return True
+    for key, reason in (
+        ('www-authenticate', 'authentication_header'),
+        ('proxy-authenticate', 'proxy_authentication_header'),
+        ('cf-mitigated', 'cloudflare_mitigated_header'),
+        ('x-captcha', 'captcha_header'),
+        ('x-challenge', 'challenge_header'),
+    ):
+        if key in headers:
+            return reason
     sample = response.body[:256 * 1024].lower()
-    return any(marker in sample for marker in (b'captcha', b'access denied',
-                                               b'challenge-platform', b'cloudflare'))
+    # Keep ordinary references such as cdnjs.cloudflare.com out of this list.
+    # These tokens identify challenge/interstitial markup rather than a vendor
+    # name.  The existing captcha/access-denied markers remain conservative
+    # source-wide stop signals.
+    for marker, reason in (
+        (b'captcha', 'captcha_marker'),
+        (b'access denied', 'access_denied_marker'),
+        (b'challenge-platform', 'challenge_platform_marker'),
+        (b'cf-chl-', 'cloudflare_challenge_marker'),
+        (b'cf-turnstile', 'cloudflare_turnstile_marker'),
+        (b'cf-browser-verification', 'cloudflare_verification_marker'),
+        (b'just a moment...', 'cloudflare_interstitial_marker'),
+    ):
+        if marker in sample:
+            return reason
+    return None
+
+
+def _blocked_response(response: HttpResponse) -> bool:
+    return _blocked_reason(response) is not None
 
 
 def require_reviewed_source_structure(body: bytes) -> None:
@@ -212,7 +245,8 @@ class Collector:
                     'error': str(error) or error.__class__.__name__,
                     'transport_calls': 1}
 
-        outcome = classify_response(response, permit['url'])
+        block_reason = _blocked_reason(response)
+        outcome = 'blocked' if block_reason is not None else classify_response(response, permit['url'])
         if outcome == 'ok' and self.response_parser is not None:
             try:
                 parser_result = self.response_parser(response.body)
@@ -241,6 +275,8 @@ class Collector:
         }
         if parser_error is not None:
             result['error'] = parser_error
+        if block_reason is not None:
+            result['block_reason'] = block_reason
         return result
 
     def status(self) -> dict[str, Any]:
@@ -265,7 +301,52 @@ class Collector:
                                  priority=priority, discovered_from=discovered_from,
                                  ready_at=ready_at)
 
-    def parse_cache(self, raw_ref: str | None = None) -> list[dict[str, Any]]:
-        """Parse saved HTML locally; no gate claim and no transport call."""
+    def parse_cache(self, raw_ref: str | None = None, *, adapter: str = 'generic') -> list[dict[str, Any]]:
+        """Parse saved HTML locally; no gate claim and no transport call.
+
+        ``netkeiba-shutuba`` is deliberately an offline adapter. It only
+        consumes a response already recorded in the ledger and verifies the
+        saved bytes before extracting the reviewed entry-table shape.
+        """
         responses = self.gate.responses(raw_ref)
-        return [self.cache.parse(response) for response in responses]
+        if adapter == 'generic':
+            return [self.cache.parse(response) for response in responses]
+        if adapter != 'netkeiba-shutuba':
+            raise ValueError(f'unknown cache adapter: {adapter}')
+        from gi_racesim.normalization.netkeiba_shutuba import (
+            ShutubaStructureError,
+            parse_shutuba_html,
+        )
+        results: list[dict[str, Any]] = []
+        for response in responses:
+            result: dict[str, Any] = {
+                'raw_ref': response['raw_ref'],
+                'path': response['path'],
+                'status_code': response.get('status_code'),
+            }
+            try:
+                body = Path(str(response['path'])).read_bytes()
+                digest = sha256(body).hexdigest()
+                if digest != response.get('body_sha256'):
+                    result.update({'state': 'HASH_MISMATCH', 'body_sha256': digest,
+                                   'body_bytes': len(body)})
+                elif response.get('status_code', 0) < 200 or response.get('status_code', 0) >= 300:
+                    result.update({'state': 'NOT_PARSEABLE', 'body_sha256': digest,
+                                   'body_bytes': len(body), 'error': 'response is not a 2xx page'})
+                else:
+                    normalized = parse_shutuba_html(
+                        body,
+                        source_url=str(response['requested_url']),
+                    )
+                    normalized['source'].update({
+                        'raw_ref': response['raw_ref'],
+                        'requested_url': response['requested_url'],
+                        'response_url': response.get('response_url'),
+                        'fetched_at': response.get('fetched'),
+                        'status_code': response.get('status_code'),
+                    })
+                    result.update({'state': 'PARSED', 'normalized': normalized})
+            except (OSError, ShutubaStructureError, UnicodeError, ValueError) as error:
+                result.update({'state': 'PARSE_ERROR', 'error': str(error) or error.__class__.__name__})
+            results.append(result)
+        return results
