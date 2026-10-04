@@ -1,6 +1,6 @@
 # WORK-006 source adapter audit
 
-状態: 初回実取得済み（2要求、source groupは人手レビュー待ちで停止中）
+状態: 初回実取得済み（3要求、source groupはアクセス制限のため停止中）
 
 この記録は、少量実取得を開始する前に対象と保存境界を固定するためのものです。
 対象URLや利用条件を推測して埋めず、本人が開始した要求だけを本番台帳へ登録します。
@@ -44,7 +44,7 @@
 | 実行版完全SHA | `d625331ffa74eb50ecbf8468f29c9eb6ed400ad4`（parser適用前の取得版） |
 | 本番台帳バックアップ | 新規台帳のため既存バックアップなし。以後の再開前に取得する |
 | 初回task / URL | robots.txt、続いて `race_id=202605040211` |
-| 停止日時・累計要求数 | 2026-10-03 16:01:43、2要求、`parse_schema_review` |
+| 停止日時・累計要求数 | 2026-10-04 21:25:49、3要求、`blocked` |
 
 ## 初回robots要求の実績
 
@@ -66,8 +66,18 @@
 - ローカルparser適用結果: 17頭の出走表を抽出し、`~/Library/Application Support/GIRaceSim/normalized/202605040211__9f3e8c6a483f8377.json` に新規保存した。`results`、`laps`、`corners`、`odds_at_start` は欠測のまま。
 - parser実装結果: 保存HTML専用の `netkeiba_shutuba_v1` と `parse-cache --adapter netkeiba-shutuba` を追加し、合成HTML 6テストと実HTML17行のローカル解析に成功した。source groupの `parse_schema_review` は利用条件・原表照合・レビュー済み実行版の確認まで解除しない。
 
+## 初回過去走入口の実績
+
+- 取得時刻: 2026-10-04 21:25 JST（台帳の応答終了時刻）
+- URL: `https://db.netkeiba.com/horse/2019102632`（出馬表から最初に発見した過去走入口）
+- 結果: HTTP 200 / `BLOCKED` / transport calls 1。応答本文にログイン・bot関連の文字列があり、認証要求またはアクセス制限の可能性を保守的に停止判定した。
+- 保存参照: `cache:0da6f400b26b4a8094950f7ba7e9ac1b`
+- 保存サイズ・SHA-256: 83402 bytes / `ad75630c8879cdaedcf37bfa36332b712cf9387ea44f15f3fde3e27889f0cbab`
+- Content-Type: `text/html; charset=EUC-JP`。rawとsidecarは本番rawディレクトリへ保存したが、文字コード対応や本文の採用判断は未実施。
+- 同じsource groupを `blocked` のまま停止し、自動retry、リダイレクト追跡、残りの馬・結果・ラップページの追加要求は行わない。
+
 ## 未実施・保留
 
-- 利用条件・通常公開範囲の確認と、人手による原表照合。
+- 利用条件・通常公開範囲の確認と、人手による原表照合。過去走入口はアクセス制限判定のため、解除条件を確認するまで再開しない。
 - 結果・履歴・ラップ・コーナーの追加取得と、実HTMLパーサーをlive tickへ接続して再開すること。
 - normalized出走表からWORK-003 bundleへ変換すること。出馬表だけではviewer結果bundleを作らない。
