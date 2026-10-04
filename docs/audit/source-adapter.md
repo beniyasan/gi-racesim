@@ -1,6 +1,6 @@
 # WORK-006 source adapter audit
 
-状態: 初回実取得済み（3要求、source groupはアクセス制限のため停止中）
+状態: 初回実取得済み（3要求、本番台帳は旧版の誤判定を含むため停止中。source review未完了）
 
 この記録は、少量実取得を開始する前に対象と保存境界を固定するためのものです。
 対象URLや利用条件を推測して埋めず、本人が開始した要求だけを本番台帳へ登録します。
@@ -70,11 +70,11 @@
 
 - 取得時刻: 2026-10-04 21:25 JST（台帳の応答終了時刻）
 - URL: `https://db.netkeiba.com/horse/2019102632`（出馬表から最初に発見した過去走入口）
-- 結果: HTTP 200 / `BLOCKED` / transport calls 1。応答本文にログイン・bot関連の文字列があり、認証要求またはアクセス制限の可能性を保守的に停止判定した。
+- 結果: HTTP 200 / 台帳上は `BLOCKED` / transport calls 1。取得時の実行版が本文中の通常のCDN URLに含まれる `cloudflare` をアクセス制限と誤判定した。保存HTMLを固定してオフライン再判定すると、明示的なcaptcha/challenge/access denied、認証ヘッダー、リダイレクトはなく、判定は `ok` になる。
 - 保存参照: `cache:0da6f400b26b4a8094950f7ba7e9ac1b`
 - 保存サイズ・SHA-256: 83402 bytes / `ad75630c8879cdaedcf37bfa36332b712cf9387ea44f15f3fde3e27889f0cbab`
-- Content-Type: `text/html; charset=EUC-JP`。rawとsidecarは本番rawディレクトリへ保存したが、文字コード対応や本文の採用判断は未実施。
-- 同じsource groupを `blocked` のまま停止し、自動retry、リダイレクト追跡、残りの馬・結果・ラップページの追加要求は行わない。
+- Content-Type: `text/html; charset=EUC-JP`。strict EUC-JP decodeは成功するが、静的HTMLはプロフィール表1個と過去走の空placeholderだけで、結果・日付・距離・着順・通過・上り・ラップは含まれない。履歴は遅延Ajax endpointの構造だけ確認し、呼び出していない。
+- 同じsource groupは本番台帳上の停止を維持し、過去の試行を上書きせず、自動retry、リダイレクト追跡、残りの馬・結果・ラップページの追加要求は行わない。再開条件は利用条件、通常公開範囲、過去走endpointの採用可否と構造の人手レビューである。
 
 ## 未実施・保留
 

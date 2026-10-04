@@ -104,6 +104,8 @@ HTTPをモックに差し替え、実サイトへ通信しません。
 
 認証／challengeはstatusや応答URLの分類に先立って判定します。例えば302と
 `WWW-Authenticate`の組み合わせもsource-wide pauseになり、後続タスクを実行しません。
+本文の一般的なCDN名だけではアクセス制限と判定しません。captcha、access denied、
+challenge用マーカー、認証系ヘッダーなど明示的な停止根拠がある場合だけsource-wide pauseにします。
 
 ## LaunchAgentテンプレート
 

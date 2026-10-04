@@ -140,6 +140,57 @@ class CollectorTests(unittest.TestCase):
             with self.subTest(response=response):
                 self.assertEqual(classify_response(response, 'https://race.netkeiba.com/mock'), 'blocked')
 
+    def test_normal_cloudflare_cdn_reference_is_not_an_access_signal(self):
+        from gi_racesim.collector import classify_response
+        response = HttpResponse(
+            200,
+            b'<script src="https://cdnjs.cloudflare.com/ajax/libs/example/1.0/example.js">',
+        )
+        self.assertEqual(classify_response(response, 'https://race.netkeiba.com/mock'), 'ok')
+
+    def test_cloudflare_challenge_mixed_with_cdn_is_blocked_with_reason(self):
+        self.setup_task()
+        response = HttpResponse(
+            200,
+            b'<script src="https://cdnjs.cloudflare.com/ajax/libs/example/1.0/example.js">'
+            b'<div class="cf-chl-widget">challenge</div>',
+        )
+        result = self.collector(MockTransport(response)).tick(self.now)
+        self.assertEqual(result['state'], 'BLOCKED')
+        self.assertEqual(result['block_reason'], 'cloudflare_challenge_marker')
+        self.assertEqual(self.gate.status()['paused'], 'blocked')
+
+    def test_block_status_and_headers_have_non_sensitive_reasons(self):
+        from gi_racesim.collector import classify_response
+        for response, reason in (
+            (HttpResponse(403, b''), 'status_403'),
+            (HttpResponse(429, b''), 'status_429'),
+            (HttpResponse(200, b'', {'WWW-Authenticate': 'Basic realm=private'}),
+             'authentication_header'),
+        ):
+            with self.subTest(reason=reason):
+                self.gate.close()
+                self.gate = Gate(Path(self.tmp.name) / f'reason-{reason}.sqlite3')
+                self.setup_task()
+                result = self.collector(MockTransport(response)).tick(self.now)
+                self.assertEqual(result['state'], 'BLOCKED')
+                self.assertEqual(result['block_reason'], reason)
+
+    def test_unreviewed_200_still_quarantines_after_cdn_false_positive_fix(self):
+        self.setup_task()
+        response = HttpResponse(
+            200,
+            b'<html><script src="https://cdnjs.cloudflare.com/ajax/libs/example.js"></script>'
+            b'<p>login</p></html>',
+        )
+        collector = Collector(self.gate, transport=MockTransport(response),
+                              cache=CacheStore(self.cache_path),
+                              response_parser=require_reviewed_source_structure)
+        result = collector.tick(self.now)
+        self.assertEqual(result['state'], 'PARSE_ERROR')
+        self.assertNotIn('block_reason', result)
+        self.assertEqual(self.gate.status()['paused'], 'parse_schema_review')
+
     def test_blocked_response_pauses_source_group(self):
         self.setup_task(2)
         transport = MockTransport(HttpResponse(403, b'access denied'))
