@@ -96,6 +96,8 @@ def build_parser() -> argparse.ArgumentParser:
     parse_cache = sub.add_parser('parse-cache', help='parse saved HTML without any HTTP')
     _common_options(parse_cache)
     parse_cache.add_argument('--ref', help='one cache reference; otherwise parse all saved responses')
+    parse_cache.add_argument('--adapter', choices=('generic', 'netkeiba-shutuba'), default='generic',
+                             help='offline parser for saved bytes (default: generic)')
     return parser
 
 
@@ -164,7 +166,8 @@ def main(argv: list[str] | None = None) -> int:
             collector.abandon(args.token, _timestamp(args), args.note)
             result = collector.status()
         elif args.command == 'parse-cache':
-            result = {'state': 'PARSED_CACHE', 'entries': collector.parse_cache(args.ref)}
+            result = {'state': 'PARSED_CACHE',
+                      'entries': collector.parse_cache(args.ref, adapter=args.adapter)}
         else:  # pragma: no cover - argparse enforces the set above
             parser.error(f'unknown command: {args.command}')
             return 2

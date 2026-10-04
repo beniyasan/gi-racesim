@@ -1,6 +1,6 @@
 # WORK-006 source adapter audit
 
-状態: 事前準備中（実取得・実HTML照合は未実施）
+状態: 初回実取得済み（2要求、source groupは人手レビュー待ちで停止中）
 
 この記録は、少量実取得を開始する前に対象と保存境界を固定するためのものです。
 対象URLや利用条件を推測して埋めず、本人が開始した要求だけを本番台帳へ登録します。
@@ -11,18 +11,18 @@
 | 項目 | 記録 |
 | --- | --- |
 | source group | `netkeiba.com`（全サブドメイン共通。変更には明示的なレビューが必要） |
-| 最初の公開入口URL | 未確定。本人が指定したHTTPS URLを記録する |
-| 対象レース／ID | 未確定。入口から発見したIDを台帳のtaskとして記録する |
-| 利用条件の確認日・根拠 | 未確認。公式の利用条件または公開範囲を記録する |
-| `robots.txt` の確認日・結果 | 未確認。確認結果と対象パスを記録する |
+| 最初の公開入口URL | `https://race.netkeiba.com/race/shutuba.html?race_id=202605040211`（本人指定、2026-10-03） |
+| 対象レース／ID | `202605040211` |
+| 利用条件の確認日・根拠 | 未確認。実取得の採用判断は保留する |
+| `robots.txt` の確認日・結果 | 2026-10-03、`https://race.netkeiba.com/robots.txt` はHTTP 404。robots不在を許可とは解釈しない |
 | 必要フィールド | レース識別、開催日・競馬場・距離、結果、ラップ、コーナー隊列、欠測理由 |
-| 人手照合者・照合日 | 未実施。保存HTMLと原表を照合した担当者を記録する |
+| 人手照合者・照合日 | 未実施。出馬表の原表照合を記録する |
 
 ## 保存と台帳
 
 - 本番SQLite台帳は `~/Library/Application Support/GIRaceSim/collector.sqlite3` を使う。
 - 原HTMLとsidecarメタデータは `~/Library/Application Support/GIRaceSim/raw/` に保存する。
-- normalizedデータは原HTMLと別の `~/Library/Application Support/GIRaceSim/normalized/` に置き、同じ `raw_ref` とSHA-256で対応付ける。
+- normalizedデータは原HTMLと別の `~/Library/Application Support/GIRaceSim/normalized/` に置き、同じraw SHA-256で対応付ける。
 - Gitには原HTML、sidecar、normalized実データを追加しない。テストは一時DB・一時raw・合成fixtureだけを使う。
 - 実取得開始前に本番台帳とrawのバックアップ先、復旧方法、実行版の完全SHAを記録する。
 
@@ -39,16 +39,35 @@
 
 | 項目 | 記録 |
 | --- | --- |
-| 開始操作をした本人 | 未記録 |
-| 開始日時（JST） | 未記録 |
-| 実行版完全SHA | 未記録 |
-| 本番台帳バックアップ | 未記録 |
-| 初回task / URL | 未記録 |
-| 停止日時・累計要求数 | 未記録 |
+| 開始操作をした本人 | 本人指定URLを受領したCodex実行（2026-10-03） |
+| 開始日時（JST） | 2026-10-03 15:56:04 |
+| 実行版完全SHA | `d625331ffa74eb50ecbf8468f29c9eb6ed400ad4`（parser適用前の取得版） |
+| 本番台帳バックアップ | 新規台帳のため既存バックアップなし。以後の再開前に取得する |
+| 初回task / URL | robots.txt、続いて `race_id=202605040211` |
+| 停止日時・累計要求数 | 2026-10-03 16:01:43、2要求、`parse_schema_review` |
 
-## 未実施
+## 初回robots要求の実績
 
-- 実サイトへの通信、実HTMLの保存、実HTMLパーサーの採用。
-- URL発見、robots・利用条件の確認、人手による原表照合。
-- normalized実データの作成とWORK-003 bundleへの変換。
+- 開始時刻: 2026-10-03 15:56 JST（実際の台帳時刻）
+- URL: `https://race.netkeiba.com/robots.txt`
+- 結果: HTTP 404 / `NOT_FOUND` / transport calls 1
+- 保存参照: `cache:5ac94915cff34ada9a6547c3e48f8eb9`
+- 保存サイズ・SHA-256: 196 bytes / `80c3fe2ae1062abf56456f52518bd670f9ec3917b7f85e152b347ac6b6faf880`
+- 次回要求可能時刻: 応答終了後120秒以上。レース本文の取得後に利用条件と公開範囲を再確認する。
 
+## 初回レースHTMLの実績
+
+- 取得時刻: 2026-10-03 16:01 JST（台帳の応答終了時刻）
+- URL: `https://race.netkeiba.com/race/shutuba.html?race_id=202605040211`
+- 結果: HTTP 200 / `PARSE_ERROR` / transport calls 1。構造未確認のためsource groupを自動停止。
+- 保存参照: `cache:0f7916d9c3f94837a789a81ec2897e7f`
+- 保存サイズ・SHA-256: 287241 bytes / `9f3e8c6a483f837774d0d6ef0a14ccf0e21fddfe9b3124140e8ef5ad9a963e32`
+- 保存HTMLから確認できた範囲: race_id `202605040211`、2026-10-04 東京11R、芝1800m、17頭の出馬表。これは発走前の出走表で、結果・実測ラップ・コーナー隊列ではない。
+- ローカルparser適用結果: 17頭の出走表を抽出し、`~/Library/Application Support/GIRaceSim/normalized/202605040211__9f3e8c6a483f8377.json` に新規保存した。`results`、`laps`、`corners`、`odds_at_start` は欠測のまま。
+- parser実装結果: 保存HTML専用の `netkeiba_shutuba_v1` と `parse-cache --adapter netkeiba-shutuba` を追加し、合成HTML 6テストと実HTML17行のローカル解析に成功した。source groupの `parse_schema_review` は利用条件・原表照合・レビュー済み実行版の確認まで解除しない。
+
+## 未実施・保留
+
+- 利用条件・通常公開範囲の確認と、人手による原表照合。
+- 結果・履歴・ラップ・コーナーの追加取得と、実HTMLパーサーをlive tickへ接続して再開すること。
+- normalized出走表からWORK-003 bundleへ変換すること。出馬表だけではviewer結果bundleを作らない。

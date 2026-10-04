@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from html.parser import HTMLParser
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Callable
 
@@ -265,7 +266,52 @@ class Collector:
                                  priority=priority, discovered_from=discovered_from,
                                  ready_at=ready_at)
 
-    def parse_cache(self, raw_ref: str | None = None) -> list[dict[str, Any]]:
-        """Parse saved HTML locally; no gate claim and no transport call."""
+    def parse_cache(self, raw_ref: str | None = None, *, adapter: str = 'generic') -> list[dict[str, Any]]:
+        """Parse saved HTML locally; no gate claim and no transport call.
+
+        ``netkeiba-shutuba`` is deliberately an offline adapter. It only
+        consumes a response already recorded in the ledger and verifies the
+        saved bytes before extracting the reviewed entry-table shape.
+        """
         responses = self.gate.responses(raw_ref)
-        return [self.cache.parse(response) for response in responses]
+        if adapter == 'generic':
+            return [self.cache.parse(response) for response in responses]
+        if adapter != 'netkeiba-shutuba':
+            raise ValueError(f'unknown cache adapter: {adapter}')
+        from gi_racesim.normalization.netkeiba_shutuba import (
+            ShutubaStructureError,
+            parse_shutuba_html,
+        )
+        results: list[dict[str, Any]] = []
+        for response in responses:
+            result: dict[str, Any] = {
+                'raw_ref': response['raw_ref'],
+                'path': response['path'],
+                'status_code': response.get('status_code'),
+            }
+            try:
+                body = Path(str(response['path'])).read_bytes()
+                digest = sha256(body).hexdigest()
+                if digest != response.get('body_sha256'):
+                    result.update({'state': 'HASH_MISMATCH', 'body_sha256': digest,
+                                   'body_bytes': len(body)})
+                elif response.get('status_code', 0) < 200 or response.get('status_code', 0) >= 300:
+                    result.update({'state': 'NOT_PARSEABLE', 'body_sha256': digest,
+                                   'body_bytes': len(body), 'error': 'response is not a 2xx page'})
+                else:
+                    normalized = parse_shutuba_html(
+                        body,
+                        source_url=str(response['requested_url']),
+                    )
+                    normalized['source'].update({
+                        'raw_ref': response['raw_ref'],
+                        'requested_url': response['requested_url'],
+                        'response_url': response.get('response_url'),
+                        'fetched_at': response.get('fetched'),
+                        'status_code': response.get('status_code'),
+                    })
+                    result.update({'state': 'PARSED', 'normalized': normalized})
+            except (OSError, ShutubaStructureError, UnicodeError, ValueError) as error:
+                result.update({'state': 'PARSE_ERROR', 'error': str(error) or error.__class__.__name__})
+            results.append(result)
+        return results

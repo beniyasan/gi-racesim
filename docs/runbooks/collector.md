@@ -48,6 +48,18 @@ CLIのmock tickは`synthetic-result-v1`の結果表と`horse`・`finish`の見�
 2xx応答も保存・隔離して停止します。合成fixture用の検証器を実ページには使いません。
 `parse-cache`は汎用のtitle/text抽出であり、`PARSED`は実レースデータの採用を意味しません。
 
+保存済みのnetkeiba出馬表をレビュー済みのsource adapterで確認する場合は、次のように
+台帳のSHA-256とURLを検査してから正規化結果を標準出力へ返します。これは保存ファイルだけを
+読み、要求枠を消費せず、外部HTTPを呼びません。
+
+```bash
+python3 -m gi_racesim.collector --db "$DB" --cache-dir "$RAW" \
+  parse-cache --adapter netkeiba-shutuba --ref 'cache:TOKEN'
+```
+
+構造不一致、race ID不一致、保存バイト列のSHA不一致は `PARSE_ERROR` または
+`HASH_MISMATCH` として採用しません。出馬表にない結果・ラップ・コーナーを補完しません。
+
 ## 状態確認と停止・再開
 
 ```bash
